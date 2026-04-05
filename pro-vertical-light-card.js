@@ -38,7 +38,7 @@ class ProVerticalLightCard extends HTMLElement {
       column.innerHTML = `
         <div style="color: white; font-weight: 600; font-size: 13px; opacity: 0.9; text-align: center; height: 20px; overflow: hidden; pointer-events: none;">${name}</div>
         <div class="slider-track" data-entity="${ent.entity}" style="height: 300px; width: 75px; background: rgba(255,255,255,0.08); border-radius: 25px; position: relative; overflow: hidden; cursor: ns-resize; touch-action: none;">
-          <div class="slider-fill" style="position: absolute; bottom: 0; width: 100%; height: ${isOn ? brightness : 0}%; background: ${isOn ? bulbColor : '#333'}; transition: height 0.1s ease, background 0.3s ease; pointer-events: none;"></div>
+          <div class="slider-fill" style="position: absolute; bottom: 0; width: 100%; height: ${isOn ? brightness : 0}%; background: ${isOn ? bulbColor : '#333'}; transition: background 0.3s ease; pointer-events: none;"></div>
         </div>
         <div class="power-btn" style="width: 55px; height: 55px; border-radius: 50%; background: ${isOn ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)'}; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid rgba(255,255,255,0.05);">
           <ha-icon icon="mdi:power" style="color: ${isOn ? bulbColor : '#666'}; --mdc-icon-size: 26px; pointer-events: none;"></ha-icon>
@@ -48,67 +48,63 @@ class ProVerticalLightCard extends HTMLElement {
       const track = column.querySelector(".slider-track");
       const fill = column.querySelector(".slider-fill");
 
-      // Funcție pentru calcularea și trimiterea luminozității
+      // Logica de Slide (Drag)
+      let isDragging = false;
+
       const updateBrightness = (e) => {
-        e.preventDefault(); // Previne comportamente default (scroll pe mobil)
         const rect = track.getBoundingClientRect();
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
         const y = clientY - rect.top;
         const pct = Math.min(100, Math.max(0, Math.round(100 - (y / rect.height) * 100)));
         
-        // Update vizual instantaneu pentru feedback fluid
+        // Update vizual instantaneu
         fill.style.height = `${pct}%`;
         fill.style.background = pct > 0 ? bulbColor : '#333';
         
-        // Pornește lumina și setează luminozitatea
+        // Trimite comanda
         if (pct > 0) {
           this._hass.callService("light", "turn_on", { 
             entity_id: ent.entity, 
             brightness_pct: pct 
           });
-        } else {
-          this._hass.callService("light", "turn_off", { 
-            entity_id: ent.entity 
-          });
         }
       };
 
-      // Logica de Slide (Drag)
-      let isDragging = false;
-
-      const startSlide = (e) => {
-        e.preventDefault();
+      const onStart = (e) => {
         isDragging = true;
+        e.preventDefault();
         updateBrightness(e);
       };
 
-      const moveSlide = (e) => {
+      const onMove = (e) => {
+        if (!isDragging) return;
+        e.preventDefault();
+        updateBrightness(e);
+      };
+
+      const onEnd = (e) => {
         if (isDragging) {
+          isDragging = false;
           e.preventDefault();
-          updateBrightness(e);
         }
       };
 
-      const stopSlide = () => {
-        isDragging = false;
-      };
-
       // Evenimente Mouse
-      track.addEventListener("mousedown", startSlide);
-      document.addEventListener("mousemove", moveSlide);
-      document.addEventListener("mouseup", stopSlide);
+      track.addEventListener("mousedown", onStart);
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onEnd);
 
-      // Evenimente Touch (Mobil)
-      track.addEventListener("touchstart", startSlide, { passive: false });
-      document.addEventListener("touchmove", moveSlide, { passive: false });
-      document.addEventListener("touchend", stopSlide);
+      // Evenimente Touch (Mobil) - trebuie să fie pe track pentru start, dar pe document pentru move
+      track.addEventListener("touchstart", onStart, { passive: false });
+      document.addEventListener("touchmove", onMove, { passive: false });
+      document.addEventListener("touchend", onEnd, { passive: false });
 
       // Curățare evenimente când elementul este eliminat
       column._cleanup = () => {
-        document.removeEventListener("mousemove", moveSlide);
-        document.removeEventListener("mouseup", stopSlide);
-        document.removeEventListener("touchmove", moveSlide);
-        document.removeEventListener("touchend", stopSlide);
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onEnd);
+        document.removeEventListener("touchmove", onMove);
+        document.removeEventListener("touchend", onEnd);
       };
 
       // Power Button
