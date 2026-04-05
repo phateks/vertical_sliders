@@ -52,6 +52,8 @@ class ProVerticalLightCard extends HTMLElement {
       let isDragging = false;
       let lastValue = -1;
       let animationFrame = null;
+      let startY = 0;
+      let hasMoved = false;
 
       const updateVisual = (pct) => {
         fill.style.height = `${pct}%`;
@@ -99,8 +101,12 @@ class ProVerticalLightCard extends HTMLElement {
 
       const onStart = (e) => {
         isDragging = true;
-        e.preventDefault();
-        e.stopPropagation();
+        hasMoved = false;
+        startY = getClientY(e);
+        
+        if (e.cancelable) {
+          e.preventDefault();
+        }
         
         const pct = calculatePercent(e);
         lastValue = pct;
@@ -113,8 +119,17 @@ class ProVerticalLightCard extends HTMLElement {
       const onMove = (e) => {
         if (!isDragging) return;
         
-        e.preventDefault();
-        e.stopPropagation();
+        const currentY = getClientY(e);
+        const distance = Math.abs(currentY - startY);
+        
+        // Marchează că s-a mișcat dacă distanța > 2px
+        if (distance > 2) {
+          hasMoved = true;
+        }
+        
+        if (e.cancelable) {
+          e.preventDefault();
+        }
         
         const pct = calculatePercent(e);
         if (pct !== lastValue) {
@@ -128,10 +143,6 @@ class ProVerticalLightCard extends HTMLElement {
         
         isDragging = false;
         
-        if (e.cancelable) {
-          e.preventDefault();
-        }
-        
         // Elimină clasa de feedback
         track.classList.remove('is-dragging');
         
@@ -139,18 +150,22 @@ class ProVerticalLightCard extends HTMLElement {
         if (lastValue >= 0) {
           sendCommand(lastValue);
         }
+        
+        // Reset
+        hasMoved = false;
+        startY = 0;
       };
 
       // Evenimente Mouse
       track.addEventListener("mousedown", onStart, { passive: false });
       document.addEventListener("mousemove", onMove, { passive: false });
-      document.addEventListener("mouseup", onEnd, { passive: false });
+      document.addEventListener("mouseup", onEnd);
 
-      // Evenimente Touch (Mobil)
+      // Evenimente Touch (Mobil) - mai defensive setup
       track.addEventListener("touchstart", onStart, { passive: false });
       document.addEventListener("touchmove", onMove, { passive: false });
-      document.addEventListener("touchend", onEnd, { passive: false });
-      document.addEventListener("touchcancel", onEnd, { passive: false });
+      document.addEventListener("touchend", onEnd);
+      document.addEventListener("touchcancel", onEnd);
 
       // Curățare evenimente când elementul este eliminat
       column._cleanup = () => {
