@@ -50,18 +50,16 @@ class ProVerticalLightCard extends HTMLElement {
 
       // Logica de Slide (Drag)
       let isDragging = false;
+      let lastValue = -1;
 
-      const updateBrightness = (e) => {
-        const rect = track.getBoundingClientRect();
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        const y = clientY - rect.top;
-        const pct = Math.min(100, Math.max(0, Math.round(100 - (y / rect.height) * 100)));
-        
-        // Update vizual instantaneu
+      const updateVisual = (pct) => {
         fill.style.height = `${pct}%`;
-        fill.style.background = pct > 0 ? bulbColor : '#333';
-        
-        // Trimite comanda
+        if (pct > 0) {
+          fill.style.background = bulbColor;
+        }
+      };
+
+      const sendCommand = (pct) => {
         if (pct > 0) {
           this._hass.callService("light", "turn_on", { 
             entity_id: ent.entity, 
@@ -70,22 +68,39 @@ class ProVerticalLightCard extends HTMLElement {
         }
       };
 
+      const calculatePercent = (e) => {
+        const rect = track.getBoundingClientRect();
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const y = clientY - rect.top;
+        return Math.min(100, Math.max(0, Math.round(100 - (y / rect.height) * 100)));
+      };
+
       const onStart = (e) => {
         isDragging = true;
         e.preventDefault();
-        updateBrightness(e);
+        const pct = calculatePercent(e);
+        lastValue = pct;
+        updateVisual(pct);
       };
 
       const onMove = (e) => {
         if (!isDragging) return;
         e.preventDefault();
-        updateBrightness(e);
+        const pct = calculatePercent(e);
+        if (pct !== lastValue) {
+          lastValue = pct;
+          updateVisual(pct);
+        }
       };
 
       const onEnd = (e) => {
         if (isDragging) {
           isDragging = false;
           e.preventDefault();
+          // Trimite comanda doar la final, după ce utilizatorul a terminat drag-ul
+          if (lastValue >= 0) {
+            sendCommand(lastValue);
+          }
         }
       };
 
@@ -94,7 +109,7 @@ class ProVerticalLightCard extends HTMLElement {
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onEnd);
 
-      // Evenimente Touch (Mobil) - trebuie să fie pe track pentru start, dar pe document pentru move
+      // Evenimente Touch (Mobil)
       track.addEventListener("touchstart", onStart, { passive: false });
       document.addEventListener("touchmove", onMove, { passive: false });
       document.addEventListener("touchend", onEnd, { passive: false });
