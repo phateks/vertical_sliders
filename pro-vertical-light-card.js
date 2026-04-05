@@ -10,6 +10,13 @@ class ProVerticalLightCard extends HTMLElement {
       this.content = this.querySelector("#container");
     }
 
+    // Curățare event listeners anteriori
+    if (this.content.children) {
+      Array.from(this.content.children).forEach(child => {
+        if (child._cleanup) child._cleanup();
+      });
+    }
+    
     this.content.innerHTML = "";
 
     this._config.entities.forEach((ent) => {
@@ -43,6 +50,7 @@ class ProVerticalLightCard extends HTMLElement {
 
       // Funcție pentru calcularea și trimiterea luminozității
       const updateBrightness = (e) => {
+        e.preventDefault(); // Previne comportamente default (scroll pe mobil)
         const rect = track.getBoundingClientRect();
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
         const y = clientY - rect.top;
@@ -50,23 +58,35 @@ class ProVerticalLightCard extends HTMLElement {
         
         // Update vizual instantaneu pentru feedback fluid
         fill.style.height = `${pct}%`;
+        fill.style.background = pct > 0 ? bulbColor : '#333';
         
-        this._hass.callService("light", "turn_on", { 
-          entity_id: ent.entity, 
-          brightness_pct: pct 
-        });
+        // Pornește lumina și setează luminozitatea
+        if (pct > 0) {
+          this._hass.callService("light", "turn_on", { 
+            entity_id: ent.entity, 
+            brightness_pct: pct 
+          });
+        } else {
+          this._hass.callService("light", "turn_off", { 
+            entity_id: ent.entity 
+          });
+        }
       };
 
       // Logica de Slide (Drag)
       let isDragging = false;
 
       const startSlide = (e) => {
+        e.preventDefault();
         isDragging = true;
         updateBrightness(e);
       };
 
       const moveSlide = (e) => {
-        if (isDragging) updateBrightness(e);
+        if (isDragging) {
+          e.preventDefault();
+          updateBrightness(e);
+        }
       };
 
       const stopSlide = () => {
@@ -75,13 +95,21 @@ class ProVerticalLightCard extends HTMLElement {
 
       // Evenimente Mouse
       track.addEventListener("mousedown", startSlide);
-      window.addEventListener("mousemove", moveSlide);
-      window.addEventListener("mouseup", stopSlide);
+      document.addEventListener("mousemove", moveSlide);
+      document.addEventListener("mouseup", stopSlide);
 
       // Evenimente Touch (Mobil)
       track.addEventListener("touchstart", startSlide, { passive: false });
-      track.addEventListener("touchmove", moveSlide, { passive: false });
-      track.addEventListener("touchend", stopSlide);
+      document.addEventListener("touchmove", moveSlide, { passive: false });
+      document.addEventListener("touchend", stopSlide);
+
+      // Curățare evenimente când elementul este eliminat
+      column._cleanup = () => {
+        document.removeEventListener("mousemove", moveSlide);
+        document.removeEventListener("mouseup", stopSlide);
+        document.removeEventListener("touchmove", moveSlide);
+        document.removeEventListener("touchend", stopSlide);
+      };
 
       // Power Button
       column.querySelector(".power-btn").addEventListener("click", () => {
