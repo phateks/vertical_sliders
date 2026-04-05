@@ -37,7 +37,7 @@ class ProVerticalLightCard extends HTMLElement {
       
       column.innerHTML = `
         <div style="color: white; font-weight: 600; font-size: 13px; opacity: 0.9; text-align: center; height: 20px; overflow: hidden; pointer-events: none;">${name}</div>
-        <div class="slider-track" data-entity="${ent.entity}" style="height: 300px; width: 75px; background: rgba(255,255,255,0.08); border-radius: 25px; position: relative; overflow: hidden; cursor: ns-resize; touch-action: none;">
+        <div class="slider-track" data-entity="${ent.entity}" style="height: 300px; width: 75px; background: rgba(255,255,255,0.08); border-radius: 25px; position: relative; overflow: hidden; cursor: ns-resize; touch-action: none; transition: background 0.1s ease;">
           <div class="slider-fill" style="position: absolute; bottom: 0; width: 100%; height: ${isOn ? brightness : 0}%; background: ${isOn ? bulbColor : '#333'}; transition: background 0.3s ease; pointer-events: none;"></div>
         </div>
         <div class="power-btn" style="width: 55px; height: 55px; border-radius: 50%; background: ${isOn ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)'}; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid rgba(255,255,255,0.05);">
@@ -48,9 +48,10 @@ class ProVerticalLightCard extends HTMLElement {
       const track = column.querySelector(".slider-track");
       const fill = column.querySelector(".slider-fill");
 
-      // Logica de Slide (Drag)
+      // Logica de Slide (Drag) - inspirată din Bubble Card
       let isDragging = false;
       let lastValue = -1;
+      let animationFrame = null;
 
       const updateVisual = (pct) => {
         fill.style.height = `${pct}%`;
@@ -68,58 +69,99 @@ class ProVerticalLightCard extends HTMLElement {
         }
       };
 
+      const getClientY = (e) => {
+        if (e.touches && e.touches[0]) {
+          return e.touches[0].clientY;
+        }
+        if (e.changedTouches && e.changedTouches[0]) {
+          return e.changedTouches[0].clientY;
+        }
+        return e.clientY;
+      };
+
       const calculatePercent = (e) => {
         const rect = track.getBoundingClientRect();
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const clientY = getClientY(e);
         const y = clientY - rect.top;
-        return Math.min(100, Math.max(0, Math.round(100 - (y / rect.height) * 100)));
+        const rawPct = 100 - (y / rect.height) * 100;
+        return Math.min(100, Math.max(0, Math.round(rawPct)));
+      };
+
+      const scheduleVisualUpdate = (pct) => {
+        if (animationFrame) {
+          cancelAnimationFrame(animationFrame);
+        }
+        animationFrame = requestAnimationFrame(() => {
+          updateVisual(pct);
+          animationFrame = null;
+        });
       };
 
       const onStart = (e) => {
         isDragging = true;
         e.preventDefault();
+        e.stopPropagation();
+        
         const pct = calculatePercent(e);
         lastValue = pct;
-        updateVisual(pct);
+        scheduleVisualUpdate(pct);
+        
+        // Adaugă clasa pentru feedback vizual
+        track.classList.add('is-dragging');
       };
 
       const onMove = (e) => {
         if (!isDragging) return;
+        
         e.preventDefault();
+        e.stopPropagation();
+        
         const pct = calculatePercent(e);
         if (pct !== lastValue) {
           lastValue = pct;
-          updateVisual(pct);
+          scheduleVisualUpdate(pct);
         }
       };
 
       const onEnd = (e) => {
-        if (isDragging) {
-          isDragging = false;
+        if (!isDragging) return;
+        
+        isDragging = false;
+        
+        if (e.cancelable) {
           e.preventDefault();
-          // Trimite comanda doar la final, după ce utilizatorul a terminat drag-ul
-          if (lastValue >= 0) {
-            sendCommand(lastValue);
-          }
+        }
+        
+        // Elimină clasa de feedback
+        track.classList.remove('is-dragging');
+        
+        // Trimite comanda doar la final
+        if (lastValue >= 0) {
+          sendCommand(lastValue);
         }
       };
 
       // Evenimente Mouse
-      track.addEventListener("mousedown", onStart);
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onEnd);
+      track.addEventListener("mousedown", onStart, { passive: false });
+      document.addEventListener("mousemove", onMove, { passive: false });
+      document.addEventListener("mouseup", onEnd, { passive: false });
 
       // Evenimente Touch (Mobil)
       track.addEventListener("touchstart", onStart, { passive: false });
       document.addEventListener("touchmove", onMove, { passive: false });
       document.addEventListener("touchend", onEnd, { passive: false });
+      document.addEventListener("touchcancel", onEnd, { passive: false });
 
       // Curățare evenimente când elementul este eliminat
       column._cleanup = () => {
+        if (animationFrame) {
+          cancelAnimationFrame(animationFrame);
+        }
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onEnd);
         document.removeEventListener("touchmove", onMove);
         document.removeEventListener("touchend", onEnd);
+        document.removeEventListener("touchcancel", onEnd);
       };
 
       // Power Button
