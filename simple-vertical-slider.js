@@ -1,9 +1,9 @@
 ﻿class SimpleVerticalSlider extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
+    if (!this._config) return; // setConfig nu a rulat inca
 
     if (!this.content) {
-      // Prima randare: construieste DOM si ataseaza listeners o singura data
       this.innerHTML = `
         <ha-card style="background: none; border: none; box-shadow: none;">
           <div id="container" style="display: flex; flex-direction: row; gap: 12px; justify-content: center; overflow-x: auto; padding: 10px 5px;"></div>
@@ -13,17 +13,19 @@
       this._cols = {};
       this._buildColumns(hass);
     } else {
-      // Apeluri ulterioare: actualizeaza DOAR vizualul, NU reface DOM-ul
       this._updateColumns(hass);
     }
   }
 
   _buildColumns(hass) {
     this._config.entities.forEach((ent) => {
-      const stateObj = hass.states[ent.entity];
+      // Suporta atat { entity: "..." } cat si string simplu
+      const entityId = typeof ent === 'string' ? ent : ent.entity;
+      const entObj = typeof ent === 'string' ? { entity: ent } : ent;
+      const stateObj = hass.states[entityId];
       if (!stateObj) return;
 
-      const { isOn, brightness, bulbColor, name } = this._getState(stateObj, ent);
+      const { isOn, brightness, bulbColor, name } = this._getState(stateObj, entObj);
 
       const column = document.createElement("div");
       column.style.cssText = "display:flex;flex-direction:column;align-items:center;width:100px;background:#1a1a1a;padding:15px 5px;border-radius:35px;gap:12px;flex-shrink:0;";
@@ -60,12 +62,12 @@
         dragValue:         -1,
         currentBrightness: isOn ? brightness : 0,
       };
-      this._cols[ent.entity] = refs;
+      this._cols[entityId] = refs;
 
-      this._attachListeners(ent.entity, refs);
+      this._attachListeners(entityId, refs);
 
       refs.powerBtn.addEventListener("click", () => {
-        this._hass.callService("light", "toggle", { entity_id: ent.entity });
+        this._hass.callService("light", "toggle", { entity_id: entityId });
       });
     });
   }
@@ -221,16 +223,17 @@
   }
 
   _updateColumns(hass) {
-    // Ruleaza la fiecare apel hass — actualizeaza vizual fara a atinge DOM-ul
     this._config.entities.forEach((ent) => {
-      const refs = this._cols[ent.entity];
+      const entityId = typeof ent === 'string' ? ent : ent.entity;
+      const entObj   = typeof ent === 'string' ? { entity: ent } : ent;
+      const refs = this._cols[entityId];
       if (!refs) return;
-      if (refs.isDragging) return; // utilizatorul trage — nu intrerupe
+      if (refs.isDragging) return;
 
-      const stateObj = hass.states[ent.entity];
+      const stateObj = hass.states[entityId];
       if (!stateObj) return;
 
-      const { isOn, brightness, bulbColor } = this._getState(stateObj, ent);
+      const { isOn, brightness, bulbColor } = this._getState(stateObj, entObj);
       const pct = isOn ? brightness : 0;
 
       refs.currentBrightness = pct;
@@ -256,17 +259,23 @@
 
   setConfig(config) {
     if (!config) return;
-    this._config = config;
-    if (!this._config.entities) this._config.entities = [];
-    // Reseteaza DOM-ul daca numarul de coloane s-a schimbat
+    // Normalizeaza entities: accepta strings sau obiecte
+    const raw = config.entities || [];
+    this._config = {
+      ...config,
+      entities: raw.map(e => typeof e === 'string' ? { entity: e } : e)
+    };
+    // Reseteaza DOM daca lista de entitati s-a schimbat
     if (this.content && this._cols) {
-      const currentEntities = Object.keys(this._cols);
-      const newEntities = this._config.entities.map(e => e.entity);
-      const changed = currentEntities.length !== newEntities.length ||
-        currentEntities.some((e, i) => e !== newEntities[i]);
-      if (changed) {
-        this.content = null; // forteaza rebuild complet
+      const cur = Object.keys(this._cols);
+      const next = this._config.entities.map(e => e.entity);
+      if (cur.length !== next.length || cur.some((e, i) => e !== next[i])) {
+        this.content = null;
       }
+    }
+    // Daca hass e deja disponibil, triggereaza rebuild
+    if (this._hass && !this.content) {
+      this.hass = this._hass;
     }
   }
 
