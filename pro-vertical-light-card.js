@@ -48,20 +48,21 @@ class ProVerticalLightCard extends HTMLElement {
       const track = column.querySelector(".slider-track");
       const fill = column.querySelector(".slider-fill");
 
-      // Logica de Slide (Drag) - exact ca Bubble Card
+      // Logica de Hold-to-Slide - exact ca Bubble Card pe mobil
       let isDragging = false;
+      let isTouching = false;
       let lastValue = -1;
+      let initialValue = -1;
       let animationFrame = null;
       let startY = 0;
       let lastY = 0;
-      let hasMoved = false;
       let dragStarted = false;
+      let holdTimeout = null;
+      const HOLD_DELAY = 200; // timpul de așteptare înainte să activăm slider-ul
 
       const updateVisual = (pct) => {
         fill.style.height = `${pct}%`;
-        if (pct > 0) {
-          fill.style.background = bulbColor;
-        }
+        fill.style.background = pct > 0 ? bulbColor : '#333';
       };
 
       const sendCommand = (pct) => {
@@ -74,12 +75,8 @@ class ProVerticalLightCard extends HTMLElement {
       };
 
       const getClientY = (e) => {
-        if (e.touches && e.touches[0]) {
-          return e.touches[0].clientY;
-        }
-        if (e.changedTouches && e.changedTouches[0]) {
-          return e.changedTouches[0].clientY;
-        }
+        if (e.touches && e.touches[0]) return e.touches[0].clientY;
+        if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
         return e.clientY;
       };
 
@@ -92,54 +89,68 @@ class ProVerticalLightCard extends HTMLElement {
       };
 
       const scheduleVisualUpdate = (pct) => {
-        if (animationFrame) {
-          cancelAnimationFrame(animationFrame);
-        }
+        if (animationFrame) cancelAnimationFrame(animationFrame);
         animationFrame = requestAnimationFrame(() => {
           updateVisual(pct);
           animationFrame = null;
         });
       };
 
+      const activateDragging = () => {
+        dragStarted = true;
+        track.classList.remove('is-touching');
+        track.classList.add('is-dragging');
+        // Salvează valoarea inițială
+        initialValue = lastValue;
+      };
+
       const onStart = (e) => {
-        isDragging = true;
-        hasMoved = false;
+        isTouching = true;
         dragStarted = false;
         startY = getClientY(e);
         lastY = startY;
         
-        // NU schimbăm vizual slider-ul aici
-        // Așteaptăm să detectăm mișcare efectivă
+        // Calculează și salvează valoarea inițială
+        const pct = calculatePercent(e);
+        lastValue = pct;
+        initialValue = pct;
         
-        // Adaugă clasa pentru feedback vizual
+        // Feedback vizual că ai atins
         track.classList.add('is-touching');
+        
+        // Pentru touch: activează dragging după un delay scurt ȘI mișcare
+        if (e.type === 'touchstart') {
+          holdTimeout = setTimeout(() => {
+            if (isTouching && !dragStarted) {
+              // Nu activăm automat, așteptăm mișcare
+            }
+          }, HOLD_DELAY);
+        } else {
+          // Pentru mouse: activează imediat
+          dragStarted = true;
+          track.classList.add('is-dragging');
+        }
       };
 
       const onMove = (e) => {
-        if (!isDragging) return;
+        if (!isTouching) return;
         
         const currentY = getClientY(e);
         const deltaY = Math.abs(currentY - startY);
-        const moveY = Math.abs(currentY - lastY);
         
-        // Detectează mișcare verticală mai mare de 3px
-        if (!dragStarted && deltaY > 3) {
-          dragStarted = true;
-          hasMoved = true;
-          track.classList.remove('is-touching');
-          track.classList.add('is-dragging');
-          
-          // Previne scroll DOAR după ce am detectat mișcare
-          if (e.cancelable) {
-            e.preventDefault();
+        // Pentru touch: activează dragging după mișcare > 5px
+        if (!dragStarted && deltaY > 5) {
+          if (holdTimeout) {
+            clearTimeout(holdTimeout);
+            holdTimeout = null;
           }
+          activateDragging();
+          if (e.cancelable) e.preventDefault();
         }
         
         // Actualizează vizual DOAR după ce dragging-ul a început
         if (dragStarted) {
-          if (e.cancelable) {
-            e.preventDefault();
-          }
+          if (e.cancelable) e.preventDefault();
           
           const pct = calculatePercent(e);
           if (pct !== lastValue) {
@@ -152,37 +163,44 @@ class ProVerticalLightCard extends HTMLElement {
       };
 
       const onEnd = (e) => {
-        if (!isDragging) return;
+        if (!isTouching) return;
         
-        isDragging = false;
-        dragStarted = false;
+        if (holdTimeout) {
+          clearTimeout(holdTimeout);
+          holdTimeout = null;
+        }
+        
+        isTouching = false;
         
         // Elimină clasele de feedback
         track.classList.remove('is-touching');
         track.classList.remove('is-dragging');
         
-        // Trimite comanda DOAR dacă s-a mișcat efectiv slider-ul
-        if (hasMoved && lastValue >= 0) {
-          sendCommand(lastValue);
-        } else if (!hasMoved) {
-          // Dacă nu s-a mișcat, consideră-l ca un tap și setează la poziția de click
+        if (dragStarted) {
+          // Dragging efectiv → trimite valoarea finală
+          if (lastValue >= 0 && lastValue !== initialValue) {
+            sendCommand(lastValue);
+          }
+        } else {
+          // Click/tap simplu → setează la poziția de click
           const pct = calculatePercent(e);
-          updateVisual(pct);
+          scheduleVisualUpdate(pct);
           sendCommand(pct);
         }
         
         // Reset
-        hasMoved = false;
+        dragStarted = false;
         startY = 0;
         lastY = 0;
+        initialValue = -1;
       };
 
-      // Evenimente Mouse
+      // Evenimente Mouse (desktop)
       track.addEventListener("mousedown", onStart, { passive: false });
       document.addEventListener("mousemove", onMove, { passive: false });
       document.addEventListener("mouseup", onEnd);
 
-      // Evenimente Touch (Mobil)
+      // Evenimente Touch (mobil) - hold-to-slide behavior
       track.addEventListener("touchstart", onStart, { passive: false });
       document.addEventListener("touchmove", onMove, { passive: false });
       document.addEventListener("touchend", onEnd);
@@ -190,9 +208,8 @@ class ProVerticalLightCard extends HTMLElement {
 
       // Curățare evenimente când elementul este eliminat
       column._cleanup = () => {
-        if (animationFrame) {
-          cancelAnimationFrame(animationFrame);
-        }
+        if (animationFrame) cancelAnimationFrame(animationFrame);
+        if (holdTimeout) clearTimeout(holdTimeout);
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onEnd);
         document.removeEventListener("touchmove", onMove);
