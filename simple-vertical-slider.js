@@ -293,8 +293,8 @@
 class SimpleVerticalSliderEditor extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
-    // Actualizeaza hass pe toate picker-ele existente
     this.querySelectorAll('ha-entity-picker').forEach(p => { p.hass = hass; });
+    if (!this._config) return; // setConfig nu a rulat inca
     if (!this._rendered) this._render();
   }
 
@@ -302,7 +302,14 @@ class SimpleVerticalSliderEditor extends HTMLElement {
     if (!config) return;
     this._config = JSON.parse(JSON.stringify(config));
     if (!this._config.entities) this._config.entities = [];
-    if (this._rendered) this._render();
+    // Normalizeaza strings la obiecte
+    this._config.entities = this._config.entities.map(e =>
+      typeof e === 'string' ? { entity: e } : e
+    );
+    // Render imediat daca hass e deja disponibil, altfel la primul set hass
+    if (this._hass) {
+      this._render();
+    }
   }
 
   _fire() {
