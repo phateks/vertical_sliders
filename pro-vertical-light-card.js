@@ -257,6 +257,175 @@
   setConfig(config) {
     this._config = config;
   }
+
+  static getStubConfig() {
+    return { entities: [{ entity: "light.example" }] };
+  }
+
+  static getConfigElement() {
+    return document.createElement("pro-vertical-light-card-editor");
+  }
 }
 
-customElements.define("pro-vertical-light-card", ProVerticalLightCard);
+// ── Editor GUI ────────────────────────────────────────────────────────────────
+
+class ProVerticalLightCardEditor extends HTMLElement {
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._rendered) this._render();
+  }
+
+  setConfig(config) {
+    this._config = JSON.parse(JSON.stringify(config)); // deep copy
+    if (!this._config.entities) this._config.entities = [];
+    if (this._rendered) this._render();
+  }
+
+  _fire() {
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: this._config },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+
+  _render() {
+    this._rendered = true;
+    const entities = this._config.entities || [];
+
+    this.innerHTML = `
+      <style>
+        .pv-editor { padding: 8px 0; font-family: var(--primary-font-family, sans-serif); }
+        .pv-editor h3 { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: var(--primary-text-color); }
+        .pv-entity-row {
+          display: flex; align-items: center; gap: 8px;
+          margin-bottom: 10px; background: var(--secondary-background-color, #f0f0f0);
+          border-radius: 10px; padding: 10px 12px;
+        }
+        .pv-entity-row > * { flex-shrink: 0; }
+        .pv-entity-row ha-entity-picker { flex: 1 1 auto; min-width: 0; }
+        .pv-name-input {
+          width: 90px; border: 1px solid var(--divider-color, #ccc);
+          border-radius: 6px; padding: 6px 8px; font-size: 13px;
+          background: var(--card-background-color, white);
+          color: var(--primary-text-color, black);
+        }
+        .pv-icon-btn {
+          background: none; border: none; cursor: pointer; padding: 4px;
+          color: var(--secondary-text-color, #888); border-radius: 6px;
+          display: flex; align-items: center; justify-content: center;
+        }
+        .pv-icon-btn:hover { color: var(--primary-text-color); background: var(--divider-color, #eee); }
+        .pv-icon-btn.del:hover { color: var(--error-color, #f44336); }
+        .pv-add-btn {
+          width: 100%; padding: 10px; border-radius: 10px; border: 2px dashed var(--divider-color, #ccc);
+          background: none; cursor: pointer; font-size: 13px; font-weight: 600;
+          color: var(--primary-color, #03a9f4); margin-top: 4px;
+        }
+        .pv-add-btn:hover { background: var(--secondary-background-color, #f0f0f0); }
+        .pv-drag-handle { cursor: grab; color: var(--secondary-text-color, #aaa); }
+      </style>
+      <div class="pv-editor">
+        <h3>Beculete</h3>
+        <div id="pv-list">
+          ${entities.map((ent, i) => this._rowHTML(ent, i)).join('')}
+        </div>
+        <button class="pv-add-btn" id="pv-add">+ Adauga bec</button>
+      </div>
+    `;
+
+    // Adaugare entitate
+    this.querySelector("#pv-add").addEventListener("click", () => {
+      this._config.entities.push({ entity: "" });
+      this._render();
+      this._fire();
+    });
+
+    // Actiuni pe randuri
+    this.querySelectorAll(".pv-row").forEach((row, i) => {
+      // Entity picker nativ HA
+      const picker = row.querySelector("ha-entity-picker");
+      if (picker) {
+        picker.hass = this._hass;
+        picker.value = entities[i].entity || "";
+        picker.includeDomains = ["light"];
+        picker.allowCustomEntity = false;
+        picker.addEventListener("value-changed", (e) => {
+          this._config.entities[i].entity = e.detail.value;
+          this._fire();
+        });
+      }
+
+      // Nume custom
+      const nameInput = row.querySelector(".pv-name-input");
+      if (nameInput) {
+        nameInput.addEventListener("input", (e) => {
+          const val = e.target.value.trim();
+          if (val) {
+            this._config.entities[i].name = val;
+          } else {
+            delete this._config.entities[i].name;
+          }
+          this._fire();
+        });
+      }
+
+      // Sterge
+      row.querySelector(".pv-del").addEventListener("click", () => {
+        this._config.entities.splice(i, 1);
+        this._render();
+        this._fire();
+      });
+
+      // Sus
+      row.querySelector(".pv-up")?.addEventListener("click", () => {
+        if (i === 0) return;
+        [this._config.entities[i - 1], this._config.entities[i]] =
+          [this._config.entities[i], this._config.entities[i - 1]];
+        this._render();
+        this._fire();
+      });
+
+      // Jos
+      row.querySelector(".pv-down")?.addEventListener("click", () => {
+        if (i === entities.length - 1) return;
+        [this._config.entities[i], this._config.entities[i + 1]] =
+          [this._config.entities[i + 1], this._config.entities[i]];
+        this._render();
+        this._fire();
+      });
+    });
+  }
+
+  _rowHTML(ent, i) {
+    const total = (this._config.entities || []).length;
+    return `
+      <div class="pv-entity-row pv-row" data-index="${i}">
+        <span class="pv-drag-handle">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M3 15h18v-2H3v2zm0 4h18v-2H3v2zm0-8h18V9H3v2zm0-6v2h18V5H3z"/></svg>
+        </span>
+        <ha-entity-picker
+          style="flex:1;min-width:0;"
+          allow-custom-entity
+        ></ha-entity-picker>
+        <input
+          class="pv-name-input"
+          type="text"
+          placeholder="Nume (optional)"
+          value="${ent.name ? ent.name.replace(/"/g, '&quot;') : ''}"
+        />
+        <button class="pv-icon-btn pv-up" title="Muta sus" ${i === 0 ? 'disabled style="opacity:0.3"' : ''}>
+          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M7 14l5-5 5 5H7z"/></svg>
+        </button>
+        <button class="pv-icon-btn pv-down" title="Muta jos" ${i === total - 1 ? 'disabled style="opacity:0.3"' : ''}>
+          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M7 10l5 5 5-5H7z"/></svg>
+        </button>
+        <button class="pv-icon-btn del pv-del" title="Sterge">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zm2.46-7.12l1.41-1.41L12 12.59l2.12-2.12 1.41 1.41L13.41 14l2.12 2.12-1.41 1.41L12 15.41l-2.12 2.12-1.41-1.41L10.59 14l-2.13-2.12zM15.5 4l-1-1h-5l-1 1H5v2h14V4h-3.5z"/></svg>
+        </button>
+      </div>
+    `;
+  }
+}
+
+customElements.define("pro-vertical-light-card-editor", ProVerticalLightCardEditor);
