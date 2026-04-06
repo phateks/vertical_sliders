@@ -38,7 +38,7 @@ class ProVerticalLightCard extends HTMLElement {
       column.innerHTML = `
         <div style="color: white; font-weight: 600; font-size: 13px; opacity: 0.9; text-align: center; height: 20px; overflow: hidden; pointer-events: none;">${name}</div>
         <div class="slider-container" style="position: relative; height: 300px; width: 75px;">
-          <div class="slider-track" data-entity="${ent.entity}" style="height: 100%; width: 100%; background: rgba(255,255,255,0.08); border-radius: 25px; position: relative; overflow: hidden; cursor: ns-resize; touch-action: pan-x pinch-zoom;">
+          <div class="slider-track" data-entity="${ent.entity}" style="height: 100%; width: 100%; background: rgba(255,255,255,0.08); border-radius: 25px; position: relative; overflow: hidden; cursor: ns-resize; touch-action: none; user-select: none;">
             <div class="slider-fill" style="position: absolute; bottom: 0; width: 100%; height: ${isOn ? brightness : 0}%; background: ${isOn ? bulbColor : '#333'}; transition: background 0.3s ease, height 0.3s ease; pointer-events: none;"></div>
           </div>
           <div class="slider-overlay" style="position: absolute; top: 0; left: 0; height: 100%; width: 100%; background: rgba(255,255,255,0.15); border-radius: 25px; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; display: flex; align-items: center; justify-content: center;">
@@ -89,11 +89,12 @@ class ProVerticalLightCard extends HTMLElement {
         return Math.min(100, Math.max(0, Math.round(100 - (y / rect.height) * 100)));
       };
 
-      // Pointer Events API cu setPointerCapture - nu mai poate fi "furat" de HA/browser
+      // Pointer Events API cu setPointerCapture + fallback pe document
       track.addEventListener("pointerdown", (e) => {
         e.preventDefault();
+        e.stopPropagation();
 
-        // Capturează pointer-ul pe acest element - nimeni nu-l mai poate fura
+        // Capturează pointer-ul — move/up vin direct la track indiferent unde merge degetul
         try { track.setPointerCapture(e.pointerId); } catch (err) {}
 
         isDragging = true;
@@ -101,26 +102,48 @@ class ProVerticalLightCard extends HTMLElement {
         currentValue = pct;
 
         overlay.style.opacity = '1';
-        overlay.style.pointerEvents = 'none';
         updateOverlay(pct);
-      });
+
+        // Fallback listeners pe document pentru cazuri unde capture eșuează
+        document.addEventListener("pointermove", onDocMove, { passive: false });
+        document.addEventListener("pointerup", onDocEnd);
+        document.addEventListener("pointercancel", onDocEnd);
+      }, { passive: false });
 
       track.addEventListener("pointermove", (e) => {
         if (!isDragging) return;
         e.preventDefault();
-
         const pct = calculatePercent(e.clientY);
         if (pct !== currentValue) {
           currentValue = pct;
           updateOverlay(pct);
         }
-      });
+      }, { passive: false });
 
-      const onPointerEnd = (e) => {
+      track.addEventListener("pointerup", (e) => finishDrag(e.pointerId));
+      track.addEventListener("pointercancel", (e) => finishDrag(e.pointerId));
+
+      const onDocMove = (e) => {
+        if (!isDragging) return;
+        e.preventDefault();
+        const pct = calculatePercent(e.clientY);
+        if (pct !== currentValue) {
+          currentValue = pct;
+          updateOverlay(pct);
+        }
+      };
+
+      const onDocEnd = (e) => finishDrag(e.pointerId);
+
+      const finishDrag = (pointerId) => {
         if (!isDragging) return;
         isDragging = false;
 
-        try { track.releasePointerCapture(e.pointerId); } catch (err) {}
+        try { track.releasePointerCapture(pointerId); } catch (err) {}
+
+        document.removeEventListener("pointermove", onDocMove);
+        document.removeEventListener("pointerup", onDocEnd);
+        document.removeEventListener("pointercancel", onDocEnd);
 
         overlay.style.opacity = '0';
 
@@ -130,12 +153,12 @@ class ProVerticalLightCard extends HTMLElement {
         currentValue = -1;
       };
 
-      track.addEventListener("pointerup", onPointerEnd);
-      track.addEventListener("pointercancel", onPointerEnd);
-
       // Curățare
       column._cleanup = () => {
         if (animationFrame) cancelAnimationFrame(animationFrame);
+        document.removeEventListener("pointermove", onDocMove);
+        document.removeEventListener("pointerup", onDocEnd);
+        document.removeEventListener("pointercancel", onDocEnd);
       };
 
       // Power Button
