@@ -87,10 +87,12 @@
       });
     };
 
-    const openOverlay = () => {
-      refs.dragValue = refs.currentBrightness;
-      refs.oFill.style.height = `${refs.currentBrightness}%`;
-      refs.oPct.textContent = `${refs.currentBrightness}%`;
+    const openOverlay = (clientY) => {
+      // Porneste de la pozitia exacta a tapului/click-ului
+      const pct = calcPct(clientY);
+      refs.dragValue = pct;
+      refs.oFill.style.height = `${pct}%`;
+      refs.oPct.textContent = `${pct}%`;
       refs.overlay.style.opacity = '1';
       refs.isDragging = true;
     };
@@ -142,8 +144,9 @@
 
     track.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      refs.touchId = e.changedTouches[0].identifier;
-      openOverlay();
+      const touch = e.changedTouches[0];
+      refs.touchId = touch.identifier;
+      openOverlay(touch.clientY);
       window.addEventListener('touchmove', onTouchMove, { passive: false });
       window.addEventListener('touchend', onTouchEnd);
       window.addEventListener('touchcancel', onTouchCancel);
@@ -165,7 +168,7 @@
 
     track.addEventListener('mousedown', (e) => {
       e.preventDefault();
-      openOverlay();
+      openOverlay(e.clientY);
       window.addEventListener('mousemove', onMouseMove);
       window.addEventListener('mouseup', onMouseUp);
     });
