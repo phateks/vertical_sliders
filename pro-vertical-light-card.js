@@ -41,9 +41,9 @@ class ProVerticalLightCard extends HTMLElement {
           <div class="slider-track" data-entity="${ent.entity}" style="height: 100%; width: 100%; background: rgba(255,255,255,0.08); border-radius: 25px; position: relative; overflow: hidden; cursor: ns-resize; touch-action: none; user-select: none;">
             <div class="slider-fill" style="position: absolute; bottom: 0; width: 100%; height: ${isOn ? brightness : 0}%; background: ${isOn ? bulbColor : '#333'}; transition: background 0.3s ease, height 0.3s ease; pointer-events: none;"></div>
           </div>
-          <div class="slider-overlay" style="position: absolute; top: 0; left: 0; height: 100%; width: 100%; background: rgba(0,0,0,0.75); border-radius: 25px; opacity: 0; pointer-events: none; transition: opacity 0.15s ease; overflow: hidden;">
-            <div class="slider-overlay-fill" style="position: absolute; bottom: 0; width: 100%; height: 0%; background: ${bulbColor}; transition: none; pointer-events: none;"></div>
-            <div class="slider-percentage" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; color: white; font-weight: 700; font-size: 18px; text-shadow: 0 1px 8px rgba(0,0,0,1), 0 0 12px rgba(0,0,0,0.8); pointer-events: none; white-space: nowrap;">0%</div>
+          <div class="slider-overlay" style="position: absolute; top: 0; left: 0; height: 100%; width: 100%; background: rgba(40,40,40,0.96); border-radius: 25px; opacity: 0; pointer-events: none; transition: opacity 0.12s ease; overflow: hidden;">
+            <div class="slider-overlay-fill" style="position: absolute; bottom: 0; width: 100%; height: 0%; background: rgba(160,160,160,0.75); transition: none; pointer-events: none;"></div>
+            <div class="slider-percentage" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; color: white; font-weight: 700; font-size: 20px; text-shadow: 0 1px 6px rgba(0,0,0,0.9); pointer-events: none; white-space: nowrap;">0%</div>
           </div>
         </div>
         <div class="power-btn" style="width: 55px; height: 55px; border-radius: 50%; background: ${isOn ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)'}; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid rgba(255,255,255,0.05);">
@@ -60,14 +60,37 @@ class ProVerticalLightCard extends HTMLElement {
       let isDragging = false;
       let currentValue = -1;
       let animationFrame = null;
+      let activeTouchId = null;
+
+      // Valoarea curentă a entității (0 dacă e oprit)
+      const entityBrightness = isOn ? brightness : 0;
 
       const updateOverlay = (pct) => {
         if (animationFrame) cancelAnimationFrame(animationFrame);
         animationFrame = requestAnimationFrame(() => {
           overlayFill.style.height = `${pct}%`;
-          percentage.textContent = `${pct}%`;
+          percentage.textContent = `${Math.round(pct)}%`;
           animationFrame = null;
         });
+      };
+
+      const showOverlay = () => {
+        // Overlay pornește întotdeauna de la valoarea curentă a becului
+        currentValue = entityBrightness;
+        overlayFill.style.height = `${entityBrightness}%`;
+        percentage.textContent = `${entityBrightness}%`;
+        overlay.style.opacity = '1';
+        isDragging = true;
+      };
+
+      const hideOverlay = (sendCmd) => {
+        if (!isDragging) return;
+        isDragging = false;
+        activeTouchId = null;
+        if (animationFrame) { cancelAnimationFrame(animationFrame); animationFrame = null; }
+        overlay.style.opacity = '0';
+        if (sendCmd && currentValue >= 0) sendCommand(currentValue);
+        currentValue = -1;
       };
 
       const sendCommand = (pct) => {
@@ -89,104 +112,75 @@ class ProVerticalLightCard extends HTMLElement {
         return Math.min(100, Math.max(0, Math.round(100 - (y / rect.height) * 100)));
       };
 
-      const listenerOpts = { passive: false };
-      let dragStartTime = 0;
-      const cancelGracePeriod = 150; // ms — ignoră pointercancel fals pe iOS
-
-      const getClientY = (e) => {
-        if (e.clientY !== undefined) return e.clientY;
-        if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
-        if (e.touches && e.touches[0]) return e.touches[0].clientY;
-        return 0;
-      };
-
-      const releaseCaptureSafely = (e) => {
-        if (typeof e?.pointerId !== 'number') return;
-        try {
-          if (track.hasPointerCapture && track.hasPointerCapture(e.pointerId)) {
-            track.releasePointerCapture(e.pointerId);
-          }
-        } catch (_) {}
-      };
-
-      const attachListeners = () => {
-        // Pe element (pentru captură directă)
-        track.addEventListener('pointermove', onPointerMove, listenerOpts);
-        track.addEventListener('touchmove', onPointerMove, listenerOpts);
-        track.addEventListener('touchend', onPointerUp, listenerOpts);
-        // Pe window (pentru când degetul iese din element)
-        window.addEventListener('pointermove', onPointerMove, listenerOpts);
-        window.addEventListener('pointerup', onPointerUp, listenerOpts);
-        window.addEventListener('pointercancel', onPointerCancel, listenerOpts);
-        window.addEventListener('touchmove', onPointerMove, listenerOpts);
-        window.addEventListener('touchend', onPointerUp, listenerOpts);
-        window.addEventListener('touchcancel', onPointerCancel, listenerOpts);
-        window.addEventListener('blur', onPointerCancel);
-      };
-
-      const detachListeners = () => {
-        track.removeEventListener('pointermove', onPointerMove, listenerOpts);
-        track.removeEventListener('touchmove', onPointerMove, listenerOpts);
-        track.removeEventListener('touchend', onPointerUp, listenerOpts);
-        window.removeEventListener('pointermove', onPointerMove, listenerOpts);
-        window.removeEventListener('pointerup', onPointerUp, listenerOpts);
-        window.removeEventListener('pointercancel', onPointerCancel, listenerOpts);
-        window.removeEventListener('touchmove', onPointerMove, listenerOpts);
-        window.removeEventListener('touchend', onPointerUp, listenerOpts);
-        window.removeEventListener('touchcancel', onPointerCancel, listenerOpts);
-        window.removeEventListener('blur', onPointerCancel);
-      };
-
-      const onPointerMove = (e) => {
+      // ── TOUCH (mobil) ──────────────────────────────────────────────────
+      // touchstart cu preventDefault({ passive: false }) = browser-ul NU mai
+      // interpretează gestul ca scroll => NICIUN pointercancel nu va fi emis
+      const onTouchMove = (e) => {
         if (!isDragging) return;
-        if (e.touches && e.touches.length > 1) return; // ignoră pinch
+        const t = Array.from(e.touches).find(t => t.identifier === activeTouchId)
+               || Array.from(e.changedTouches).find(t => t.identifier === activeTouchId);
+        if (!t) return;
         if (e.cancelable) e.preventDefault();
-        e.stopPropagation();
-        const pct = calculatePercent(getClientY(e));
-        if (pct !== currentValue) {
-          currentValue = pct;
-          updateOverlay(pct);
-        }
+        const pct = calculatePercent(t.clientY);
+        if (pct !== currentValue) { currentValue = pct; updateOverlay(pct); }
       };
 
-      const onPointerUp = (e) => {
+      const onTouchEnd = (e) => {
+        const t = Array.from(e.changedTouches).find(t => t.identifier === activeTouchId);
+        if (!t) return;
+        window.removeEventListener('touchmove', onTouchMove);
+        window.removeEventListener('touchend', onTouchEnd);
+        window.removeEventListener('touchcancel', onTouchCancel);
+        hideOverlay(true);
+      };
+
+      const onTouchCancel = () => {
+        window.removeEventListener('touchmove', onTouchMove);
+        window.removeEventListener('touchend', onTouchEnd);
+        window.removeEventListener('touchcancel', onTouchCancel);
+        hideOverlay(true); // trimite și la cancel, nu reseta
+      };
+
+      track.addEventListener('touchstart', (e) => {
+        // CRUCIAL: preventDefault pe touchstart oprește complet gestul de scroll
+        // => browser-ul nu va emite pointercancel
+        e.preventDefault();
+        const touch = e.changedTouches[0];
+        activeTouchId = touch.identifier;
+        showOverlay();
+        window.addEventListener('touchmove', onTouchMove, { passive: false });
+        window.addEventListener('touchend', onTouchEnd);
+        window.addEventListener('touchcancel', onTouchCancel);
+      }, { passive: false });
+
+      // ── MOUSE (desktop) ────────────────────────────────────────────────
+      const onMouseMove = (e) => {
         if (!isDragging) return;
-        e.stopPropagation();
-        if (e.cancelable) e.preventDefault();
-        releaseCaptureSafely(e);
-        isDragging = false;
-        detachListeners();
-        overlay.style.opacity = '0';
-        if (currentValue >= 0) sendCommand(currentValue);
-        currentValue = -1;
+        const pct = calculatePercent(e.clientY);
+        if (pct !== currentValue) { currentValue = pct; updateOverlay(pct); }
       };
 
-      const onPointerCancel = (e) => {
-        if (!isDragging) return;
-        // Grace period: iOS trimite pointercancel fals imediat după start — ignoră-l
-        if (Date.now() - dragStartTime < cancelGracePeriod) return;
-        releaseCaptureSafely(e);
-        isDragging = false;
-        detachListeners();
-        overlay.style.opacity = '0';
-        currentValue = -1;
+      const onMouseUp = () => {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        hideOverlay(true);
       };
 
-      track.addEventListener('pointerdown', (e) => {
-        try { track.setPointerCapture(e.pointerId); } catch (_) {}
-        isDragging = true;
-        dragStartTime = Date.now();
-        const pct = calculatePercent(getClientY(e));
-        currentValue = pct;
-        overlay.style.opacity = '1';
-        updateOverlay(pct);
-        attachListeners();
-      }, listenerOpts);
+      track.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        showOverlay();
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      });
 
-      // Curățare
+      // Curățare la re-render
       column._cleanup = () => {
         if (animationFrame) cancelAnimationFrame(animationFrame);
-        detachListeners();
+        window.removeEventListener('touchmove', onTouchMove);
+        window.removeEventListener('touchend', onTouchEnd);
+        window.removeEventListener('touchcancel', onTouchCancel);
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
       };
 
       // Power Button
