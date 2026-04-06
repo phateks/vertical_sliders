@@ -89,76 +89,104 @@ class ProVerticalLightCard extends HTMLElement {
         return Math.min(100, Math.max(0, Math.round(100 - (y / rect.height) * 100)));
       };
 
-      let activeTouchId = null;
+      const listenerOpts = { passive: false };
+      let dragStartTime = 0;
+      const cancelGracePeriod = 150; // ms — ignoră pointercancel fals pe iOS
 
-      const startDrag = (clientY) => {
-        isDragging = true;
-        const pct = calculatePercent(clientY);
-        currentValue = pct;
-        overlay.style.opacity = '1';
-        updateOverlay(pct);
+      const getClientY = (e) => {
+        if (e.clientY !== undefined) return e.clientY;
+        if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
+        if (e.touches && e.touches[0]) return e.touches[0].clientY;
+        return 0;
       };
 
-      const moveDrag = (clientY) => {
+      const releaseCaptureSafely = (e) => {
+        if (typeof e?.pointerId !== 'number') return;
+        try {
+          if (track.hasPointerCapture && track.hasPointerCapture(e.pointerId)) {
+            track.releasePointerCapture(e.pointerId);
+          }
+        } catch (_) {}
+      };
+
+      const attachListeners = () => {
+        // Pe element (pentru captură directă)
+        track.addEventListener('pointermove', onPointerMove, listenerOpts);
+        track.addEventListener('touchmove', onPointerMove, listenerOpts);
+        track.addEventListener('touchend', onPointerUp, listenerOpts);
+        // Pe window (pentru când degetul iese din element)
+        window.addEventListener('pointermove', onPointerMove, listenerOpts);
+        window.addEventListener('pointerup', onPointerUp, listenerOpts);
+        window.addEventListener('pointercancel', onPointerCancel, listenerOpts);
+        window.addEventListener('touchmove', onPointerMove, listenerOpts);
+        window.addEventListener('touchend', onPointerUp, listenerOpts);
+        window.addEventListener('touchcancel', onPointerCancel, listenerOpts);
+        window.addEventListener('blur', onPointerCancel);
+      };
+
+      const detachListeners = () => {
+        track.removeEventListener('pointermove', onPointerMove, listenerOpts);
+        track.removeEventListener('touchmove', onPointerMove, listenerOpts);
+        track.removeEventListener('touchend', onPointerUp, listenerOpts);
+        window.removeEventListener('pointermove', onPointerMove, listenerOpts);
+        window.removeEventListener('pointerup', onPointerUp, listenerOpts);
+        window.removeEventListener('pointercancel', onPointerCancel, listenerOpts);
+        window.removeEventListener('touchmove', onPointerMove, listenerOpts);
+        window.removeEventListener('touchend', onPointerUp, listenerOpts);
+        window.removeEventListener('touchcancel', onPointerCancel, listenerOpts);
+        window.removeEventListener('blur', onPointerCancel);
+      };
+
+      const onPointerMove = (e) => {
         if (!isDragging) return;
-        const pct = calculatePercent(clientY);
+        if (e.touches && e.touches.length > 1) return; // ignoră pinch
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        const pct = calculatePercent(getClientY(e));
         if (pct !== currentValue) {
           currentValue = pct;
           updateOverlay(pct);
         }
       };
 
-      const endDrag = () => {
+      const onPointerUp = (e) => {
         if (!isDragging) return;
+        e.stopPropagation();
+        if (e.cancelable) e.preventDefault();
+        releaseCaptureSafely(e);
         isDragging = false;
-        activeTouchId = null;
+        detachListeners();
         overlay.style.opacity = '0';
         if (currentValue >= 0) sendCommand(currentValue);
         currentValue = -1;
       };
 
-      // Touch Events (mobil)
-      // passive:false + preventDefault opresc complet scroll-ul — browser-ul nu mai furata gestul
-      track.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        const touch = e.changedTouches[0];
-        activeTouchId = touch.identifier;
-        startDrag(touch.clientY);
-      }, { passive: false });
-
-      track.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        const touch = Array.from(e.changedTouches).find(t => t.identifier === activeTouchId);
-        if (touch) moveDrag(touch.clientY);
-      }, { passive: false });
-
-      track.addEventListener('touchend', (e) => {
-        const touch = Array.from(e.changedTouches).find(t => t.identifier === activeTouchId);
-        if (touch) endDrag();
-      });
-
-      track.addEventListener('touchcancel', () => endDrag());
-
-      // Mouse Events (desktop)
-      track.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        startDrag(e.clientY);
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-      });
-
-      const onMouseMove = (e) => moveDrag(e.clientY);
-      const onMouseUp = () => {
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-        endDrag();
+      const onPointerCancel = (e) => {
+        if (!isDragging) return;
+        // Grace period: iOS trimite pointercancel fals imediat după start — ignoră-l
+        if (Date.now() - dragStartTime < cancelGracePeriod) return;
+        releaseCaptureSafely(e);
+        isDragging = false;
+        detachListeners();
+        overlay.style.opacity = '0';
+        currentValue = -1;
       };
+
+      track.addEventListener('pointerdown', (e) => {
+        try { track.setPointerCapture(e.pointerId); } catch (_) {}
+        isDragging = true;
+        dragStartTime = Date.now();
+        const pct = calculatePercent(getClientY(e));
+        currentValue = pct;
+        overlay.style.opacity = '1';
+        updateOverlay(pct);
+        attachListeners();
+      }, listenerOpts);
 
       // Curățare
       column._cleanup = () => {
         if (animationFrame) cancelAnimationFrame(animationFrame);
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
+        detachListeners();
       };
 
       // Power Button
