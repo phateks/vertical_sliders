@@ -57,7 +57,6 @@ class ProVerticalLightCard extends HTMLElement {
       const overlayFill = column.querySelector(".slider-overlay-fill");
       const percentage = column.querySelector(".slider-percentage");
 
-      // Logica de Overlay Slider - exact ca Bubble Card
       let isDragging = false;
       let currentValue = -1;
       let animationFrame = null;
@@ -71,104 +70,72 @@ class ProVerticalLightCard extends HTMLElement {
         });
       };
 
-      const showOverlay = () => {
-        overlay.style.opacity = '1';
-        overlay.style.pointerEvents = 'auto';
-      };
-
-      const hideOverlay = () => {
-        overlay.style.opacity = '0';
-        overlay.style.pointerEvents = 'none';
-      };
-
       const sendCommand = (pct) => {
         if (pct > 0) {
-          this._hass.callService("light", "turn_on", { 
-            entity_id: ent.entity, 
-            brightness_pct: pct 
+          this._hass.callService("light", "turn_on", {
+            entity_id: ent.entity,
+            brightness_pct: pct
           });
         } else {
-          this._hass.callService("light", "turn_off", { 
-            entity_id: ent.entity 
+          this._hass.callService("light", "turn_off", {
+            entity_id: ent.entity
           });
         }
-      };
-
-      const getClientY = (e) => {
-        if (e.touches && e.touches[0]) return e.touches[0].clientY;
-        if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
-        return e.clientY;
       };
 
       const calculatePercent = (clientY) => {
         const rect = track.getBoundingClientRect();
         const y = clientY - rect.top;
-        const rawPct = 100 - (y / rect.height) * 100;
-        return Math.min(100, Math.max(0, Math.round(rawPct)));
+        return Math.min(100, Math.max(0, Math.round(100 - (y / rect.height) * 100)));
       };
 
-      const onStart = (e) => {
+      // Pointer Events API cu setPointerCapture - nu mai poate fi "furat" de HA/browser
+      track.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+
+        // Capturează pointer-ul pe acest element - nimeni nu-l mai poate fura
+        try { track.setPointerCapture(e.pointerId); } catch (err) {}
+
         isDragging = true;
-        
-        if (e.cancelable) e.preventDefault();
-        
-        const clientY = getClientY(e);
-        const pct = calculatePercent(clientY);
+        const pct = calculatePercent(e.clientY);
         currentValue = pct;
-        
-        // Arată overlay-ul și inițializează
-        showOverlay();
-        updateOverlay(pct);
-      };
 
-      const onMove = (e) => {
+        overlay.style.opacity = '1';
+        overlay.style.pointerEvents = 'none';
+        updateOverlay(pct);
+      });
+
+      track.addEventListener("pointermove", (e) => {
         if (!isDragging) return;
-        
-        if (e.cancelable) e.preventDefault();
-        
-        const clientY = getClientY(e);
-        const pct = calculatePercent(clientY);
-        
+        e.preventDefault();
+
+        const pct = calculatePercent(e.clientY);
         if (pct !== currentValue) {
           currentValue = pct;
           updateOverlay(pct);
         }
-      };
+      });
 
-      const onEnd = (e) => {
+      const onPointerEnd = (e) => {
         if (!isDragging) return;
-        
         isDragging = false;
-        
-        // Ascunde overlay-ul
-        hideOverlay();
-        
-        // Trimite comanda cu valoarea finală
+
+        try { track.releasePointerCapture(e.pointerId); } catch (err) {}
+
+        overlay.style.opacity = '0';
+
         if (currentValue >= 0) {
           sendCommand(currentValue);
         }
-        
         currentValue = -1;
       };
 
-      // Evenimente pentru desktop și mobil
-      track.addEventListener("mousedown", onStart, { passive: false });
-      document.addEventListener("mousemove", onMove, { passive: false });
-      document.addEventListener("mouseup", onEnd);
+      track.addEventListener("pointerup", onPointerEnd);
+      track.addEventListener("pointercancel", onPointerEnd);
 
-      track.addEventListener("touchstart", onStart, { passive: false });
-      document.addEventListener("touchmove", onMove, { passive: false });
-      document.addEventListener("touchend", onEnd);
-      document.addEventListener("touchcancel", onEnd);
-
-      // Curățare evenimente când elementul este eliminat
+      // Curățare
       column._cleanup = () => {
         if (animationFrame) cancelAnimationFrame(animationFrame);
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onEnd);
-        document.removeEventListener("touchmove", onMove);
-        document.removeEventListener("touchend", onEnd);
-        document.removeEventListener("touchcancel", onEnd);
       };
 
       // Power Button
