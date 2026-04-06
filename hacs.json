@@ -1,6 +1,6 @@
 {
-  "name": "Pro Vertical Room Control",
+  "name": "Simple Vertical Slider",
   "content_type": "plugin",
   "render_readme": true,
-  "filename": "pro-vertical-light-card.js"
+  "filename": "simple-vertical-slider.js"
 }

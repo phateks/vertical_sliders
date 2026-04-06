@@ -1,4 +1,4 @@
-﻿class ProVerticalLightCard extends HTMLElement {
+﻿class SimpleVerticalSlider extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
 
@@ -263,13 +263,13 @@
   }
 
   static getConfigElement() {
-    return document.createElement("pro-vertical-light-card-editor");
+    return document.createElement("simple-vertical-slider-editor");
   }
 }
 
 // ── Editor GUI ────────────────────────────────────────────────────────────────
 
-class ProVerticalLightCardEditor extends HTMLElement {
+class SimpleVerticalSliderEditor extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._rendered) this._render();
@@ -428,13 +428,13 @@ class ProVerticalLightCardEditor extends HTMLElement {
   }
 }
 
-customElements.define("pro-vertical-light-card", ProVerticalLightCard);
-customElements.define("pro-vertical-light-card-editor", ProVerticalLightCardEditor);
+customElements.define("simple-vertical-slider", SimpleVerticalSlider);
+customElements.define("simple-vertical-slider-editor", SimpleVerticalSliderEditor);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: "pro-vertical-light-card",
-  name: "Pro Vertical Light Card",
-  description: "Slidere verticale pentru becuri",
+  type: "simple-vertical-slider",
+  name: "Simple Vertical Slider",
+  description: "Simple vertical brightness sliders",
   preview: false,
 });
