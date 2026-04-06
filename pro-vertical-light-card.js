@@ -48,12 +48,14 @@ class ProVerticalLightCard extends HTMLElement {
       const track = column.querySelector(".slider-track");
       const fill = column.querySelector(".slider-fill");
 
-      // Logica de Slide (Drag) - inspirată din Bubble Card
+      // Logica de Slide (Drag) - exact ca Bubble Card
       let isDragging = false;
       let lastValue = -1;
       let animationFrame = null;
       let startY = 0;
+      let lastY = 0;
       let hasMoved = false;
+      let dragStarted = false;
 
       const updateVisual = (pct) => {
         fill.style.height = `${pct}%`;
@@ -102,58 +104,77 @@ class ProVerticalLightCard extends HTMLElement {
       const onStart = (e) => {
         isDragging = true;
         hasMoved = false;
+        dragStarted = false;
         startY = getClientY(e);
+        lastY = startY;
         
-        if (e.cancelable) {
-          e.preventDefault();
-        }
-        
-        const pct = calculatePercent(e);
-        lastValue = pct;
-        scheduleVisualUpdate(pct);
+        // NU schimbăm vizual slider-ul aici
+        // Așteaptăm să detectăm mișcare efectivă
         
         // Adaugă clasa pentru feedback vizual
-        track.classList.add('is-dragging');
+        track.classList.add('is-touching');
       };
 
       const onMove = (e) => {
         if (!isDragging) return;
         
         const currentY = getClientY(e);
-        const distance = Math.abs(currentY - startY);
+        const deltaY = Math.abs(currentY - startY);
+        const moveY = Math.abs(currentY - lastY);
         
-        // Marchează că s-a mișcat dacă distanța > 2px
-        if (distance > 2) {
+        // Detectează mișcare verticală mai mare de 3px
+        if (!dragStarted && deltaY > 3) {
+          dragStarted = true;
           hasMoved = true;
+          track.classList.remove('is-touching');
+          track.classList.add('is-dragging');
+          
+          // Previne scroll DOAR după ce am detectat mișcare
+          if (e.cancelable) {
+            e.preventDefault();
+          }
         }
         
-        if (e.cancelable) {
-          e.preventDefault();
+        // Actualizează vizual DOAR după ce dragging-ul a început
+        if (dragStarted) {
+          if (e.cancelable) {
+            e.preventDefault();
+          }
+          
+          const pct = calculatePercent(e);
+          if (pct !== lastValue) {
+            lastValue = pct;
+            scheduleVisualUpdate(pct);
+          }
         }
         
-        const pct = calculatePercent(e);
-        if (pct !== lastValue) {
-          lastValue = pct;
-          scheduleVisualUpdate(pct);
-        }
+        lastY = currentY;
       };
 
       const onEnd = (e) => {
         if (!isDragging) return;
         
         isDragging = false;
+        dragStarted = false;
         
-        // Elimină clasa de feedback
+        // Elimină clasele de feedback
+        track.classList.remove('is-touching');
         track.classList.remove('is-dragging');
         
-        // Trimite comanda doar la final
-        if (lastValue >= 0) {
+        // Trimite comanda DOAR dacă s-a mișcat efectiv slider-ul
+        if (hasMoved && lastValue >= 0) {
           sendCommand(lastValue);
+        } else if (!hasMoved) {
+          // Dacă nu s-a mișcat, consideră-l ca un tap și setează la poziția de click
+          const pct = calculatePercent(e);
+          updateVisual(pct);
+          sendCommand(pct);
         }
         
         // Reset
         hasMoved = false;
         startY = 0;
+        lastY = 0;
       };
 
       // Evenimente Mouse
@@ -161,7 +182,7 @@ class ProVerticalLightCard extends HTMLElement {
       document.addEventListener("mousemove", onMove, { passive: false });
       document.addEventListener("mouseup", onEnd);
 
-      // Evenimente Touch (Mobil) - mai defensive setup
+      // Evenimente Touch (Mobil)
       track.addEventListener("touchstart", onStart, { passive: false });
       document.addEventListener("touchmove", onMove, { passive: false });
       document.addEventListener("touchend", onEnd);
