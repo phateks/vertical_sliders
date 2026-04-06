@@ -428,4 +428,13 @@ class ProVerticalLightCardEditor extends HTMLElement {
   }
 }
 
+customElements.define("pro-vertical-light-card", ProVerticalLightCard);
 customElements.define("pro-vertical-light-card-editor", ProVerticalLightCardEditor);
+
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: "pro-vertical-light-card",
+  name: "Pro Vertical Light Card",
+  description: "Slidere verticale pentru becuri",
+  preview: false,
+});
