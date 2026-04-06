@@ -37,8 +37,14 @@ class ProVerticalLightCard extends HTMLElement {
       
       column.innerHTML = `
         <div style="color: white; font-weight: 600; font-size: 13px; opacity: 0.9; text-align: center; height: 20px; overflow: hidden; pointer-events: none;">${name}</div>
-        <div class="slider-track" data-entity="${ent.entity}" style="height: 300px; width: 75px; background: rgba(255,255,255,0.08); border-radius: 25px; position: relative; overflow: hidden; cursor: ns-resize; touch-action: pan-x pinch-zoom; transition: background 0.1s ease;">
-          <div class="slider-fill" style="position: absolute; bottom: 0; width: 100%; height: ${isOn ? brightness : 0}%; background: ${isOn ? bulbColor : '#333'}; transition: background 0.3s ease; pointer-events: none;"></div>
+        <div class="slider-container" style="position: relative; height: 300px; width: 75px;">
+          <div class="slider-track" data-entity="${ent.entity}" style="height: 100%; width: 100%; background: rgba(255,255,255,0.08); border-radius: 25px; position: relative; overflow: hidden; cursor: ns-resize; touch-action: pan-x pinch-zoom;">
+            <div class="slider-fill" style="position: absolute; bottom: 0; width: 100%; height: ${isOn ? brightness : 0}%; background: ${isOn ? bulbColor : '#333'}; transition: background 0.3s ease, height 0.3s ease; pointer-events: none;"></div>
+          </div>
+          <div class="slider-overlay" style="position: absolute; top: 0; left: 0; height: 100%; width: 100%; background: rgba(255,255,255,0.15); border-radius: 25px; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; display: flex; align-items: center; justify-content: center;">
+            <div class="slider-overlay-fill" style="position: absolute; bottom: 0; width: 100%; height: 0%; background: ${bulbColor}; transition: none; pointer-events: none; border-radius: 25px;"></div>
+            <div class="slider-percentage" style="position: relative; z-index: 10; color: white; font-weight: 700; font-size: 16px; text-shadow: 0 2px 4px rgba(0,0,0,0.5); pointer-events: none;">0%</div>
+          </div>
         </div>
         <div class="power-btn" style="width: 55px; height: 55px; border-radius: 50%; background: ${isOn ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)'}; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid rgba(255,255,255,0.05);">
           <ha-icon icon="mdi:power" style="color: ${isOn ? bulbColor : '#666'}; --mdc-icon-size: 26px; pointer-events: none;"></ha-icon>
@@ -47,22 +53,32 @@ class ProVerticalLightCard extends HTMLElement {
 
       const track = column.querySelector(".slider-track");
       const fill = column.querySelector(".slider-fill");
+      const overlay = column.querySelector(".slider-overlay");
+      const overlayFill = column.querySelector(".slider-overlay-fill");
+      const percentage = column.querySelector(".slider-percentage");
 
-      // Logica de Hold-to-Slide - exact ca Bubble Card pe mobil
+      // Logica de Overlay Slider - exact ca Bubble Card
       let isDragging = false;
-      let isTouching = false;
-      let lastValue = -1;
-      let initialValue = -1;
+      let currentValue = -1;
       let animationFrame = null;
-      let startY = 0;
-      let lastY = 0;
-      let dragStarted = false;
-      let holdTimeout = null;
-      const HOLD_DELAY = 200; // timpul de așteptare înainte să activăm slider-ul
 
-      const updateVisual = (pct) => {
-        fill.style.height = `${pct}%`;
-        fill.style.background = pct > 0 ? bulbColor : '#333';
+      const updateOverlay = (pct) => {
+        if (animationFrame) cancelAnimationFrame(animationFrame);
+        animationFrame = requestAnimationFrame(() => {
+          overlayFill.style.height = `${pct}%`;
+          percentage.textContent = `${pct}%`;
+          animationFrame = null;
+        });
+      };
+
+      const showOverlay = () => {
+        overlay.style.opacity = '1';
+        overlay.style.pointerEvents = 'auto';
+      };
+
+      const hideOverlay = () => {
+        overlay.style.opacity = '0';
+        overlay.style.pointerEvents = 'none';
       };
 
       const sendCommand = (pct) => {
@@ -70,6 +86,10 @@ class ProVerticalLightCard extends HTMLElement {
           this._hass.callService("light", "turn_on", { 
             entity_id: ent.entity, 
             brightness_pct: pct 
+          });
+        } else {
+          this._hass.callService("light", "turn_off", { 
+            entity_id: ent.entity 
           });
         }
       };
@@ -80,127 +100,62 @@ class ProVerticalLightCard extends HTMLElement {
         return e.clientY;
       };
 
-      const calculatePercent = (e) => {
+      const calculatePercent = (clientY) => {
         const rect = track.getBoundingClientRect();
-        const clientY = getClientY(e);
         const y = clientY - rect.top;
         const rawPct = 100 - (y / rect.height) * 100;
         return Math.min(100, Math.max(0, Math.round(rawPct)));
       };
 
-      const scheduleVisualUpdate = (pct) => {
-        if (animationFrame) cancelAnimationFrame(animationFrame);
-        animationFrame = requestAnimationFrame(() => {
-          updateVisual(pct);
-          animationFrame = null;
-        });
-      };
-
-      const activateDragging = () => {
-        dragStarted = true;
-        track.classList.remove('is-touching');
-        track.classList.add('is-dragging');
-        // Salvează valoarea inițială
-        initialValue = lastValue;
-      };
-
       const onStart = (e) => {
-        isTouching = true;
-        dragStarted = false;
-        startY = getClientY(e);
-        lastY = startY;
+        isDragging = true;
         
-        // Calculează și salvează valoarea inițială
-        const pct = calculatePercent(e);
-        lastValue = pct;
-        initialValue = pct;
+        if (e.cancelable) e.preventDefault();
         
-        // Feedback vizual că ai atins
-        track.classList.add('is-touching');
+        const clientY = getClientY(e);
+        const pct = calculatePercent(clientY);
+        currentValue = pct;
         
-        // Pentru touch: activează dragging după un delay scurt ȘI mișcare
-        if (e.type === 'touchstart') {
-          holdTimeout = setTimeout(() => {
-            if (isTouching && !dragStarted) {
-              // Nu activăm automat, așteptăm mișcare
-            }
-          }, HOLD_DELAY);
-        } else {
-          // Pentru mouse: activează imediat
-          dragStarted = true;
-          track.classList.add('is-dragging');
-        }
+        // Arată overlay-ul și inițializează
+        showOverlay();
+        updateOverlay(pct);
       };
 
       const onMove = (e) => {
-        if (!isTouching) return;
+        if (!isDragging) return;
         
-        const currentY = getClientY(e);
-        const deltaY = Math.abs(currentY - startY);
+        if (e.cancelable) e.preventDefault();
         
-        // Pentru touch: activează dragging după mișcare > 5px
-        if (!dragStarted && deltaY > 5) {
-          if (holdTimeout) {
-            clearTimeout(holdTimeout);
-            holdTimeout = null;
-          }
-          activateDragging();
-          if (e.cancelable) e.preventDefault();
+        const clientY = getClientY(e);
+        const pct = calculatePercent(clientY);
+        
+        if (pct !== currentValue) {
+          currentValue = pct;
+          updateOverlay(pct);
         }
-        
-        // Actualizează vizual DOAR după ce dragging-ul a început
-        if (dragStarted) {
-          if (e.cancelable) e.preventDefault();
-          
-          const pct = calculatePercent(e);
-          if (pct !== lastValue) {
-            lastValue = pct;
-            scheduleVisualUpdate(pct);
-          }
-        }
-        
-        lastY = currentY;
       };
 
       const onEnd = (e) => {
-        if (!isTouching) return;
+        if (!isDragging) return;
         
-        if (holdTimeout) {
-          clearTimeout(holdTimeout);
-          holdTimeout = null;
+        isDragging = false;
+        
+        // Ascunde overlay-ul
+        hideOverlay();
+        
+        // Trimite comanda cu valoarea finală
+        if (currentValue >= 0) {
+          sendCommand(currentValue);
         }
         
-        isTouching = false;
-        
-        // Elimină clasele de feedback
-        track.classList.remove('is-touching');
-        track.classList.remove('is-dragging');
-        
-        if (dragStarted) {
-          // Dragging efectiv → trimite valoarea finală
-          if (lastValue >= 0 && lastValue !== initialValue) {
-            sendCommand(lastValue);
-          }
-        } else {
-          // Click/tap simplu → setează la poziția de click
-          const pct = calculatePercent(e);
-          scheduleVisualUpdate(pct);
-          sendCommand(pct);
-        }
-        
-        // Reset
-        dragStarted = false;
-        startY = 0;
-        lastY = 0;
-        initialValue = -1;
+        currentValue = -1;
       };
 
-      // Evenimente Mouse (desktop)
+      // Evenimente pentru desktop și mobil
       track.addEventListener("mousedown", onStart, { passive: false });
       document.addEventListener("mousemove", onMove, { passive: false });
       document.addEventListener("mouseup", onEnd);
 
-      // Evenimente Touch (mobil) - hold-to-slide behavior
       track.addEventListener("touchstart", onStart, { passive: false });
       document.addEventListener("touchmove", onMove, { passive: false });
       document.addEventListener("touchend", onEnd);
@@ -209,7 +164,6 @@ class ProVerticalLightCard extends HTMLElement {
       // Curățare evenimente când elementul este eliminat
       column._cleanup = () => {
         if (animationFrame) cancelAnimationFrame(animationFrame);
-        if (holdTimeout) clearTimeout(holdTimeout);
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onEnd);
         document.removeEventListener("touchmove", onMove);
