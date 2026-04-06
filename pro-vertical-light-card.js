@@ -114,9 +114,20 @@
       refs.dragValue = -1;
     };
 
+    const HOLD_DELAY = 200; // ms — sub 200ms = tap, peste = hold cu overlay
+
+    const sendDirect = (pct) => {
+      if (pct > 0) {
+        this._hass.callService("light", "turn_on", { entity_id: entityId, brightness_pct: pct });
+      } else {
+        this._hass.callService("light", "turn_off", { entity_id: entityId });
+      }
+    };
+
     // ── Touch (mobil) ─────────────────────────────────────────────────────
-    // preventDefault pe touchstart = browser NU mai interpreteaza ca scroll
-    // => pointercancel nu va fi emis niciodata
+
+    let holdTimer = null;
+    let tapPct = 0;
 
     const onTouchMove = (e) => {
       if (!refs.isDragging) return;
@@ -131,10 +142,23 @@
     const onTouchEnd = (e) => {
       if (!Array.from(e.changedTouches).find(t => t.identifier === refs.touchId)) return;
       removeTouchListeners();
-      closeOverlay(true);
+      if (holdTimer) {
+        // Tap scurt — timer nu a apucat sa porneasca overlay-ul
+        clearTimeout(holdTimer);
+        holdTimer = null;
+        sendDirect(tapPct);
+      } else {
+        // Hold — inchide overlay si trimite
+        closeOverlay(true);
+      }
     };
 
-    const onTouchCancel = () => { removeTouchListeners(); closeOverlay(true); };
+    const onTouchCancel = () => {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+      removeTouchListeners();
+      closeOverlay(false);
+    };
 
     const removeTouchListeners = () => {
       window.removeEventListener('touchmove', onTouchMove);
@@ -146,7 +170,14 @@
       e.preventDefault();
       const touch = e.changedTouches[0];
       refs.touchId = touch.identifier;
-      openOverlay(touch.clientY);
+      tapPct = calcPct(touch.clientY);
+
+      // Incepe timer pentru hold — daca la 200ms inca tine apasat, deschide overlay
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        openOverlay(touch.clientY);
+      }, HOLD_DELAY);
+
       window.addEventListener('touchmove', onTouchMove, { passive: false });
       window.addEventListener('touchend', onTouchEnd);
       window.addEventListener('touchcancel', onTouchCancel);
@@ -154,21 +185,36 @@
 
     // ── Mouse (desktop) ───────────────────────────────────────────────────
 
+    let mouseHoldTimer = null;
+    let mouseTapPct = 0;
+
     const onMouseMove = (e) => {
       if (!refs.isDragging) return;
       const pct = calcPct(e.clientY);
       if (pct !== refs.dragValue) { refs.dragValue = pct; setOverlayVisual(pct); }
     };
 
-    const onMouseUp = () => {
+    const onMouseUp = (e) => {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
-      closeOverlay(true);
+      if (mouseHoldTimer) {
+        clearTimeout(mouseHoldTimer);
+        mouseHoldTimer = null;
+        sendDirect(mouseTapPct);
+      } else {
+        closeOverlay(true);
+      }
     };
 
     track.addEventListener('mousedown', (e) => {
       e.preventDefault();
-      openOverlay(e.clientY);
+      mouseTapPct = calcPct(e.clientY);
+
+      mouseHoldTimer = setTimeout(() => {
+        mouseHoldTimer = null;
+        openOverlay(e.clientY);
+      }, HOLD_DELAY);
+
       window.addEventListener('mousemove', onMouseMove);
       window.addEventListener('mouseup', onMouseUp);
     });
