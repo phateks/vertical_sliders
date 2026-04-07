@@ -341,8 +341,17 @@ class SimpleVerticalSliderEditor extends HTMLElement {
   // Singura poarta: rendereaza NUMAI cand ambele _config si _hass sunt disponibile
   _tryRender() {
     if (!this._config || !this._hass) return;
+    if (this._rendered) return;
+    this._rendered = true; // seteaza inainte de await ca sa nu intre de 2 ori
+    this._renderAsync();
+  }
+
+  async _renderAsync() {
+    // Asteapta ca HA sa inregistreze ha-entity-picker (se incarca lazy)
+    if (!customElements.get('ha-entity-picker')) {
+      await customElements.whenDefined('ha-entity-picker');
+    }
     this._render();
-    this._rendered = true;
   }
 
   _fire() {
@@ -386,11 +395,6 @@ class SimpleVerticalSliderEditor extends HTMLElement {
       row.className = 'svs-row';
 
       const picker = document.createElement('ha-entity-picker');
-      picker.hass = this._hass;
-      picker.value = ent.entity || '';
-      picker.label = 'Light entity';
-      picker.includeDomains = ['light'];
-      picker.allowCustomEntity = false;
       picker.addEventListener('value-changed', (e) => {
         this._config.entities[i] = { ...this._config.entities[i], entity: e.detail.value };
         this._fire();
@@ -443,6 +447,13 @@ class SimpleVerticalSliderEditor extends HTMLElement {
       row.appendChild(downBtn);
       row.appendChild(delBtn);
       list.appendChild(row);
+
+      // Seteaza proprietatile picker-ului DUPA ce e in DOM (Lit elements au nevoie de connectCallback)
+      picker.hass = this._hass;
+      picker.value = ent.entity || '';
+      picker.label = 'Light entity';
+      picker.includeDomains = ['light'];
+      picker.allowCustomEntity = false;
     });
 
     this.querySelector('#svs-add').addEventListener('click', () => {
