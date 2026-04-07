@@ -291,25 +291,35 @@
 // ── Editor GUI ────────────────────────────────────────────────────────────────
 
 class SimpleVerticalSliderEditor extends HTMLElement {
+  connectedCallback() {
+    this._tryRender();
+  }
+
   set hass(hass) {
     this._hass = hass;
     this.querySelectorAll('ha-entity-picker').forEach(p => { p.hass = hass; });
-    if (!this._config) return; // setConfig nu a rulat inca
-    if (!this._rendered) this._render();
+    this._tryRender();
   }
 
   setConfig(config) {
     if (!config) return;
-    this._config = JSON.parse(JSON.stringify(config));
-    if (!this._config.entities) this._config.entities = [];
-    // Normalizeaza strings la obiecte
-    this._config.entities = this._config.entities.map(e =>
-      typeof e === 'string' ? { entity: e } : e
-    );
-    // Render imediat daca hass e deja disponibil, altfel la primul set hass
-    if (this._hass) {
-      this._render();
+    // Deep copy + normalizare robusta
+    try {
+      this._config = JSON.parse(JSON.stringify(config));
+    } catch (e) {
+      this._config = { entities: [] };
     }
+    if (!Array.isArray(this._config.entities)) this._config.entities = [];
+    this._config.entities = this._config.entities.map(e =>
+      !e ? { entity: '' } : typeof e === 'string' ? { entity: e } : e
+    );
+    this._tryRender();
+  }
+
+  // Singura poarta: rendereaza NUMAI cand ambele _config si _hass sunt disponibile
+  _tryRender() {
+    if (!this._config || !this._hass) return;
+    this._render();
   }
 
   _fire() {
@@ -321,41 +331,20 @@ class SimpleVerticalSliderEditor extends HTMLElement {
   }
 
   _render() {
-    this._rendered = true;
-    const entities = this._config.entities || [];
+    const entities = this._config.entities;
 
-    // Wrapper cu stil
     this.innerHTML = `
       <style>
-        .svs-editor { padding: 4px 0; }
-        .svs-row {
-          display: flex; align-items: center; gap: 8px;
-          margin-bottom: 8px; padding: 8px 12px;
-          background: var(--secondary-background-color); border-radius: 10px;
-        }
-        .svs-name {
-          width: 100px; padding: 8px; border-radius: 6px; font-size: 13px;
-          border: 1px solid var(--divider-color);
-          background: var(--card-background-color);
-          color: var(--primary-text-color);
-          flex-shrink: 0;
-        }
-        .svs-btn {
-          background: none; border: none; cursor: pointer; padding: 4px;
-          color: var(--secondary-text-color); border-radius: 6px;
-          display: flex; align-items: center; flex-shrink: 0;
-        }
+        .svs-editor { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
+        .svs-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--secondary-background-color); border-radius: 10px; }
+        .svs-name { width: 110px; padding: 8px; border-radius: 6px; font-size: 13px; border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); flex-shrink: 0; box-sizing: border-box; }
+        .svs-btn { background: none; border: none; cursor: pointer; padding: 4px; color: var(--secondary-text-color); border-radius: 6px; display: flex; align-items: center; flex-shrink: 0; }
         .svs-btn:hover { background: var(--divider-color); }
         .svs-btn.del:hover { color: var(--error-color, red); }
         .svs-btn:disabled { opacity: 0.3; pointer-events: none; }
-        .svs-add {
-          width: 100%; padding: 10px; border-radius: 10px;
-          border: 2px dashed var(--divider-color);
-          background: none; cursor: pointer; font-size: 13px; font-weight: 600;
-          color: var(--primary-color); margin-top: 4px;
-        }
+        .svs-add { width: 100%; padding: 10px; border-radius: 10px; border: 2px dashed var(--divider-color); background: none; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--primary-color); }
         .svs-add:hover { background: var(--secondary-background-color); }
-        ha-entity-picker { flex: 1 1 auto; min-width: 0; }
+        ha-entity-picker { flex: 1 1 auto; min-width: 0; display: block; }
       </style>
       <div class="svs-editor">
         <div id="svs-list"></div>
@@ -369,7 +358,6 @@ class SimpleVerticalSliderEditor extends HTMLElement {
       const row = document.createElement('div');
       row.className = 'svs-row';
 
-      // ── Entity picker (creat imperativ — singura metoda fiabila) ──
       const picker = document.createElement('ha-entity-picker');
       picker.hass = this._hass;
       picker.value = ent.entity || '';
@@ -381,13 +369,12 @@ class SimpleVerticalSliderEditor extends HTMLElement {
         this._fire();
       });
 
-      // ── Nume custom ──
       const nameInput = document.createElement('input');
       nameInput.className = 'svs-name';
       nameInput.type = 'text';
       nameInput.placeholder = 'Name (optional)';
       nameInput.value = ent.name || '';
-      nameInput.addEventListener('input', (e) => {
+      nameInput.addEventListener('change', (e) => {
         const val = e.target.value.trim();
         const updated = { ...this._config.entities[i] };
         if (val) updated.name = val; else delete updated.name;
@@ -395,12 +382,11 @@ class SimpleVerticalSliderEditor extends HTMLElement {
         this._fire();
       });
 
-      // ── Butoane ──
       const mkBtn = (svg, title, disabled) => {
         const b = document.createElement('button');
         b.className = 'svs-btn';
         b.title = title;
-        b.disabled = disabled;
+        b.disabled = !!disabled;
         b.innerHTML = svg;
         return b;
       };
