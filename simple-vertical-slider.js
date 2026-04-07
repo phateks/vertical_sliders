@@ -303,6 +303,16 @@ class SimpleVerticalSliderEditor extends HTMLElement {
 
   setConfig(config) {
     if (!config) return;
+    // Daca noi am declansat config-changed, HA va apela setConfig inapoi — ignoram re-renderul
+    if (this._firing) {
+      // Actualizam doar _config intern, fara rebuild DOM
+      try { this._config = JSON.parse(JSON.stringify(config)); } catch (e) {}
+      if (!Array.isArray(this._config.entities)) this._config.entities = [];
+      this._config.entities = this._config.entities.map(e =>
+        !e ? { entity: '' } : typeof e === 'string' ? { entity: e } : e
+      );
+      return;
+    }
     // Deep copy + normalizare robusta
     try {
       this._config = JSON.parse(JSON.stringify(config));
@@ -323,11 +333,15 @@ class SimpleVerticalSliderEditor extends HTMLElement {
   }
 
   _fire() {
+    this._firing = true;
     this.dispatchEvent(new CustomEvent('config-changed', {
       detail: { config: this._config },
       bubbles: true,
       composed: true,
     }));
+    // Resetam flag-ul dupa ce stack-ul curent s-a executat
+    // (HA poate apela setConfig sincron SAU async)
+    Promise.resolve().then(() => { this._firing = false; });
   }
 
   _render() {
