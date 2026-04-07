@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="340" viewBox="0 0 520 340">
+  <defs>
+    <radialGradient id="glow1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f5c842" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#f5c842" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f5c842" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#f5c842" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow3" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f5c842" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#f5c842" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="clip1"><rect x="0" y="0" width="80" height="220" rx="20"/></clipPath>
+    <clipPath id="clip2"><rect x="0" y="0" width="80" height="220" rx="20"/></clipPath>
+    <clipPath id="clip3"><rect x="0" y="0" width="80" height="220" rx="20"/></clipPath>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="520" height="340" fill="#111318" rx="16"/>
+
+  <!-- Title -->
+  <text x="260" y="36" font-family="system-ui,sans-serif" font-size="15" font-weight="600" fill="#cdd6f4" text-anchor="middle" letter-spacing="0.5">Simple Vertical Slider</text>
+
+  <!-- ══ Card 1 — 30% (dim) ══ -->
+  <g transform="translate(60,58)">
+    <!-- track -->
+    <rect x="0" y="0" width="80" height="220" rx="20" fill="#1e2030"/>
+    <!-- fill 30% -->
+    <g clip-path="url(#clip1)">
+      <rect x="0" y="154" width="80" height="66" rx="0" fill="#f5c842"/>
+    </g>
+    <!-- glow -->
+    <ellipse cx="40" cy="187" rx="50" ry="30" fill="url(#glow2)"/>
+    <!-- label -->
+    <text x="40" y="-10" font-family="system-ui,sans-serif" font-size="12" fill="#a6adc8" text-anchor="middle">Birou</text>
+    <!-- percent -->
+    <text x="40" y="145" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="#cdd6f4" text-anchor="middle">30%</text>
+    <!-- power btn -->
+    <circle cx="40" cy="248" r="18" fill="#1e2030" stroke="#313244" stroke-width="1.5"/>
+    <circle cx="40" cy="248" r="9" fill="none" stroke="#a6adc8" stroke-width="2" stroke-dasharray="43 14" stroke-dashoffset="-7"/>
+    <line x1="40" y1="239" x2="40" y2="245" stroke="#a6adc8" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <!-- ══ Card 2 — 75% (bright) ══ -->
+  <g transform="translate(180,58)">
+    <rect x="0" y="0" width="80" height="220" rx="20" fill="#1e2030"/>
+    <g clip-path="url(#clip2)">
+      <rect x="0" y="55" width="80" height="165" rx="0" fill="#f5c842"/>
+    </g>
+    <ellipse cx="40" cy="137" rx="55" ry="40" fill="url(#glow3)"/>
+    <text x="40" y="-10" font-family="system-ui,sans-serif" font-size="12" fill="#a6adc8" text-anchor="middle">Tavan</text>
+    <text x="40" y="46" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="#1e2030" text-anchor="middle">75%</text>
+    <circle cx="40" cy="248" r="18" fill="#1e2030" stroke="#313244" stroke-width="1.5"/>
+    <circle cx="40" cy="248" r="9" fill="none" stroke="#f5c842" stroke-width="2" stroke-dasharray="43 14" stroke-dashoffset="-7"/>
+    <line x1="40" y1="239" x2="40" y2="245" stroke="#f5c842" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <!-- ══ Card 3 — 55% ══ -->
+  <g transform="translate(300,58)">
+    <rect x="0" y="0" width="80" height="220" rx="20" fill="#1e2030"/>
+    <g clip-path="url(#clip3)">
+      <rect x="0" y="99" width="80" height="121" rx="0" fill="#f5c842"/>
+    </g>
+    <ellipse cx="40" cy="160" rx="50" ry="35" fill="url(#glow1)"/>
+    <text x="40" y="-10" font-family="system-ui,sans-serif" font-size="12" fill="#a6adc8" text-anchor="middle">Sufragerie</text>
+    <text x="40" y="90" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="#cdd6f4" text-anchor="middle">55%</text>
+    <circle cx="40" cy="248" r="18" fill="#1e2030" stroke="#313244" stroke-width="1.5"/>
+    <circle cx="40" cy="248" r="9" fill="none" stroke="#f5c842" stroke-width="2" stroke-dasharray="43 14" stroke-dashoffset="-7"/>
+    <line x1="40" y1="239" x2="40" y2="245" stroke="#f5c842" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <!-- ══ Card 4 — OFF ══ -->
+  <g transform="translate(420,58)">
+    <rect x="0" y="0" width="80" height="220" rx="20" fill="#1e2030"/>
+    <text x="40" y="-10" font-family="system-ui,sans-serif" font-size="12" fill="#a6adc8" text-anchor="middle">Hol</text>
+    <text x="40" y="118" font-family="system-ui,sans-serif" font-size="12" fill="#585b70" text-anchor="middle">OFF</text>
+    <circle cx="40" cy="248" r="18" fill="#1e2030" stroke="#313244" stroke-width="1.5"/>
+    <circle cx="40" cy="248" r="9" fill="none" stroke="#585b70" stroke-width="2" stroke-dasharray="43 14" stroke-dashoffset="-7"/>
+    <line x1="40" y1="239" x2="40" y2="245" stroke="#585b70" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <!-- Bottom label -->
+  <text x="260" y="322" font-family="system-ui,sans-serif" font-size="11" fill="#585b70" text-anchor="middle">Tap → brightness instant · Hold → drag overlay · Power button → toggle</text>
+</svg>
