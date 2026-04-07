@@ -298,21 +298,13 @@ class SimpleVerticalSliderEditor extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this.querySelectorAll('ha-entity-picker').forEach(p => { p.hass = hass; });
-    this._tryRender();
+    // _tryRender doar la primul render; nu reconstruim DOM-ul la fiecare update HA
+    if (!this._rendered) this._tryRender();
   }
 
   setConfig(config) {
     if (!config) return;
-    // Daca noi am declansat config-changed, HA va apela setConfig inapoi — ignoram re-renderul
-    if (this._firing) {
-      // Actualizam doar _config intern, fara rebuild DOM
-      try { this._config = JSON.parse(JSON.stringify(config)); } catch (e) {}
-      if (!Array.isArray(this._config.entities)) this._config.entities = [];
-      this._config.entities = this._config.entities.map(e =>
-        !e ? { entity: '' } : typeof e === 'string' ? { entity: e } : e
-      );
-      return;
-    }
+    const oldCount = this._config ? this._config.entities.length : -1;
     // Deep copy + normalizare robusta
     try {
       this._config = JSON.parse(JSON.stringify(config));
@@ -323,13 +315,34 @@ class SimpleVerticalSliderEditor extends HTMLElement {
     this._config.entities = this._config.entities.map(e =>
       !e ? { entity: '' } : typeof e === 'string' ? { entity: e } : e
     );
-    this._tryRender();
+
+    if (!this._rendered) {
+      // Prima initializare — randa cand hass e disponibil
+      this._tryRender();
+    } else if (!this._firing) {
+      // Schimbare externa (ex: editare YAML manuala)
+      const newCount = this._config.entities.length;
+      if (newCount !== oldCount) {
+        // Numar diferit de entitati — rebuild complet
+        this._render();
+      } else {
+        // Acelasi numar — actualizam valorile existente fara rebuild
+        this.querySelectorAll('ha-entity-picker').forEach((p, i) => {
+          if (this._config.entities[i]) p.value = this._config.entities[i].entity || '';
+        });
+        this.querySelectorAll('input.svs-name').forEach((inp, i) => {
+          if (this._config.entities[i]) inp.value = this._config.entities[i].name || '';
+        });
+      }
+    }
+    // Daca _firing == true: HA raspunde la propriul nostru _fire() — nu facem nimic cu DOM-ul
   }
 
   // Singura poarta: rendereaza NUMAI cand ambele _config si _hass sunt disponibile
   _tryRender() {
     if (!this._config || !this._hass) return;
     this._render();
+    this._rendered = true;
   }
 
   _fire() {
@@ -339,13 +352,13 @@ class SimpleVerticalSliderEditor extends HTMLElement {
       bubbles: true,
       composed: true,
     }));
-    // Resetam flag-ul dupa ce stack-ul curent s-a executat
-    // (HA poate apela setConfig sincron SAU async)
-    Promise.resolve().then(() => { this._firing = false; });
+    // Timeout mai lung: HA poate apela setConfig async
+    setTimeout(() => { this._firing = false; }, 200);
   }
 
   _render() {
     const entities = this._config.entities;
+    this._rendered = true;
 
     this.innerHTML = `
       <style>
