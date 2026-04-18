@@ -9,7 +9,7 @@
       this.style.cssText = 'display:block;height:100%;min-height:0;align-self:stretch;margin:0;';
       this.innerHTML = `
         <ha-card style="background:none;border:none;box-shadow:none;padding:0;margin:0;height:100%;min-height:0;display:flex;flex-direction:column;box-sizing:border-box;">
-          <div id="container" style="flex:1;min-height:0;display:flex;flex-direction:row;gap:12px;justify-content:center;align-items:stretch;overflow-x:auto;padding:10px 5px;box-sizing:border-box;"></div>
+          <div id="container" style="flex:1;min-height:0;display:flex;flex-direction:row;gap:8px;justify-content:center;align-items:stretch;overflow-x:auto;padding:0 4px;box-sizing:border-box;"></div>
         </ha-card>
       `;
       this.content = this.querySelector("#container");
@@ -31,7 +31,7 @@
       const { isOn, brightness, bulbColor, name } = this._getState(stateObj, entObj);
 
       const column = document.createElement("div");
-      column.style.cssText = "display:flex;flex-direction:column;align-items:center;width:100px;background:#1a1a1a;padding:15px 5px;border-radius:35px;gap:12px;flex-shrink:0;min-height:0;";
+      column.style.cssText = "display:flex;flex-direction:column;align-items:center;width:100px;background:#1a1a1a;padding:10px 5px 12px 5px;border-radius:35px;gap:10px;flex-shrink:0;min-height:0;";
 
       column.innerHTML = `
         <div style="color:white;font-weight:600;font-size:13px;opacity:0.9;text-align:center;height:20px;overflow:hidden;pointer-events:none;">${name}</div>
