@@ -28,7 +28,8 @@
       const stateObj = hass.states[entityId];
       if (!stateObj) return;
 
-      const { isOn, brightness, bulbColor, name } = this._getState(stateObj, entObj);
+      const { isOn, brightness, bulbColor, name, isSwitch } = this._getState(stateObj, entObj);
+      const cursor = isSwitch ? 'pointer' : 'ns-resize';
 
       const column = document.createElement("div");
       column.style.cssText = "display:flex;flex-direction:column;align-items:center;flex:1;min-width:80px;background:#1a1a1a;padding:10px 5px 12px 5px;border-radius:35px;gap:10px;min-height:0;";
@@ -36,7 +37,7 @@
       column.innerHTML = `
         <div style="color:white;font-weight:600;font-size:13px;opacity:0.9;text-align:center;height:20px;overflow:hidden;pointer-events:none;">${name}</div>
         <div style="position:relative;flex:1;min-height:80px;width:75px;">
-          <div class="slider-track" style="height:100%;width:100%;background:rgba(255,255,255,0.08);border-radius:25px;position:relative;overflow:hidden;cursor:ns-resize;touch-action:none;user-select:none;">
+          <div class="slider-track" style="height:100%;width:100%;background:rgba(255,255,255,0.08);border-radius:25px;position:relative;overflow:hidden;cursor:${cursor};touch-action:none;user-select:none;">
             <div class="slider-fill" style="position:absolute;bottom:0;width:100%;height:${isOn ? brightness : 0}%;background:${isOn ? bulbColor : '#333'};transition:background 0.3s ease,height 0.3s ease;pointer-events:none;"></div>
           </div>
           <div class="slider-overlay" style="position:absolute;top:0;left:0;height:100%;width:100%;background:rgba(30,30,30,0.97);border-radius:25px;opacity:0;pointer-events:none;overflow:hidden;">
@@ -64,13 +65,15 @@
         touchId:           null,
         dragValue:         -1,
         currentBrightness: isOn ? brightness : 0,
+        isSwitch:          isSwitch,
       };
       this._cols[entityId] = refs;
 
       this._attachListeners(entityId, refs);
 
       refs.powerBtn.addEventListener("click", () => {
-        this._hass.callService("light", "toggle", { entity_id: entityId });
+        const domain = entityId.split('.')[0];
+        this._hass.callService(domain, "toggle", { entity_id: entityId });
       });
     });
   }
@@ -110,7 +113,11 @@
       refs.overlay.style.opacity = '0';
       if (commit && refs.dragValue >= 0) {
         const pct = refs.dragValue;
-        if (pct > 0) {
+        // Switch-urile nu au dimmer — trimitem binar
+        if (refs.isSwitch) {
+          const domain = entityId.split('.')[0];
+          this._hass.callService(domain, pct >= 50 ? "turn_on" : "turn_off", { entity_id: entityId });
+        } else if (pct > 0) {
           this._hass.callService("light", "turn_on", { entity_id: entityId, brightness_pct: pct });
         } else {
           this._hass.callService("light", "turn_off", { entity_id: entityId });
@@ -122,7 +129,10 @@
     const HOLD_DELAY = 200; // ms — sub 200ms = tap, peste = hold cu overlay
 
     const sendDirect = (pct) => {
-      if (pct > 0) {
+      if (refs.isSwitch) {
+        const domain = entityId.split('.')[0];
+        this._hass.callService(domain, pct >= 50 ? "turn_on" : "turn_off", { entity_id: entityId });
+      } else if (pct > 0) {
         this._hass.callService("light", "turn_on", { entity_id: entityId, brightness_pct: pct });
       } else {
         this._hass.callService("light", "turn_off", { entity_id: entityId });
@@ -147,13 +157,16 @@
     const onTouchEnd = (e) => {
       if (!Array.from(e.changedTouches).find(t => t.identifier === refs.touchId)) return;
       removeTouchListeners();
-      if (holdTimer) {
-        // Tap scurt — timer nu a apucat sa porneasca overlay-ul
+      if (holdTimer !== null) {
+        // Tap scurt pe light dimmabil
         clearTimeout(holdTimer);
         holdTimer = null;
         sendDirect(tapPct);
+      } else if (refs.isSwitch) {
+        // Switch: mereu tap direct, binar
+        sendDirect(tapPct);
       } else {
-        // Hold — inchide overlay si trimite
+        // Hold pe light dimmabil — inchide overlay si trimite
         closeOverlay(true);
       }
     };
@@ -177,11 +190,13 @@
       refs.touchId = touch.identifier;
       tapPct = calcPct(touch.clientY);
 
-      // Incepe timer pentru hold — daca la 200ms inca tine apasat, deschide overlay
-      holdTimer = setTimeout(() => {
-        holdTimer = null;
-        openOverlay(touch.clientY);
-      }, HOLD_DELAY);
+      // Switch-urile nu au overlay de dimmer — nu pornim hold timer
+      if (!refs.isSwitch) {
+        holdTimer = setTimeout(() => {
+          holdTimer = null;
+          openOverlay(touch.clientY);
+        }, HOLD_DELAY);
+      }
 
       window.addEventListener('touchmove', onTouchMove, { passive: false });
       window.addEventListener('touchend', onTouchEnd);
@@ -202,9 +217,11 @@
     const onMouseUp = (e) => {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
-      if (mouseHoldTimer) {
+      if (mouseHoldTimer !== null) {
         clearTimeout(mouseHoldTimer);
         mouseHoldTimer = null;
+        sendDirect(mouseTapPct);
+      } else if (refs.isSwitch) {
         sendDirect(mouseTapPct);
       } else {
         closeOverlay(true);
@@ -215,10 +232,12 @@
       e.preventDefault();
       mouseTapPct = calcPct(e.clientY);
 
-      mouseHoldTimer = setTimeout(() => {
-        mouseHoldTimer = null;
-        openOverlay(e.clientY);
-      }, HOLD_DELAY);
+      if (!refs.isSwitch) {
+        mouseHoldTimer = setTimeout(() => {
+          mouseHoldTimer = null;
+          openOverlay(e.clientY);
+        }, HOLD_DELAY);
+      }
 
       window.addEventListener('mousemove', onMouseMove);
       window.addEventListener('mouseup', onMouseUp);
@@ -248,16 +267,24 @@
   }
 
   _getState(stateObj, ent) {
+    const domain = stateObj.entity_id.split('.')[0];
+    const isSwitch = domain === 'switch';
     const isOn = stateObj.state === "on";
-    const name = ent.name || stateObj.attributes.friendly_name || "Lumina";
-    const brightness = stateObj.attributes.brightness
-      ? Math.round((stateObj.attributes.brightness / 255) * 100)
-      : 0;
+    const name = ent.name || stateObj.attributes.friendly_name || "Light";
+    let brightness;
+    if (isSwitch) {
+      // Switch-urile sunt binare: 100% cand ON, 0% cand OFF
+      brightness = isOn ? 100 : 0;
+    } else {
+      brightness = stateObj.attributes.brightness
+        ? Math.round((stateObj.attributes.brightness / 255) * 100)
+        : (isOn ? 100 : 0); // light ON fara brightness attr = 100%
+    }
     let bulbColor = "#fdd835";
     if (isOn && stateObj.attributes.rgb_color) {
       bulbColor = `rgb(${stateObj.attributes.rgb_color.join(',')})`;
     }
-    return { isOn, name, brightness, bulbColor };
+    return { isOn, name, brightness, bulbColor, isSwitch };
   }
 
   setConfig(config) {
@@ -466,7 +493,7 @@ class SimpleVerticalSliderEditor extends HTMLElement {
       picker.hass = this._hass;
       picker.value = ent.entity || '';
       picker.label = 'Light entity';
-      picker.includeDomains = ['light'];
+      picker.includeDomains = ['light', 'switch'];
       picker.allowCustomEntity = false;
     });
 
