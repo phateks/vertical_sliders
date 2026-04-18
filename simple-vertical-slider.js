@@ -4,9 +4,10 @@
     if (!this._config) return; // setConfig nu a rulat inca
 
     if (!this.content) {
+      this.style.cssText = 'display:block;height:100%;';
       this.innerHTML = `
-        <ha-card style="background: none; border: none; box-shadow: none;">
-          <div id="container" style="display: flex; flex-direction: row; gap: 12px; justify-content: center; overflow-x: auto; padding: 10px 5px;"></div>
+        <ha-card style="background:none;border:none;box-shadow:none;height:100%;display:flex;flex-direction:column;">
+          <div id="container" style="flex:1;min-height:0;display:flex;flex-direction:row;gap:12px;justify-content:center;align-items:stretch;overflow-x:auto;padding:10px 5px;box-sizing:border-box;"></div>
         </ha-card>
       `;
       this.content = this.querySelector("#container");
@@ -28,11 +29,11 @@
       const { isOn, brightness, bulbColor, name } = this._getState(stateObj, entObj);
 
       const column = document.createElement("div");
-      column.style.cssText = "display:flex;flex-direction:column;align-items:center;width:100px;background:#1a1a1a;padding:15px 5px;border-radius:35px;gap:12px;flex-shrink:0;";
+      column.style.cssText = "display:flex;flex-direction:column;align-items:center;width:100px;background:#1a1a1a;padding:15px 5px;border-radius:35px;gap:12px;flex-shrink:0;min-height:0;";
 
       column.innerHTML = `
         <div style="color:white;font-weight:600;font-size:13px;opacity:0.9;text-align:center;height:20px;overflow:hidden;pointer-events:none;">${name}</div>
-        <div style="position:relative;height:300px;width:75px;">
+        <div style="position:relative;flex:1;min-height:80px;width:75px;">
           <div class="slider-track" style="height:100%;width:100%;background:rgba(255,255,255,0.08);border-radius:25px;position:relative;overflow:hidden;cursor:ns-resize;touch-action:none;user-select:none;">
             <div class="slider-fill" style="position:absolute;bottom:0;width:100%;height:${isOn ? brightness : 0}%;background:${isOn ? bulbColor : '#333'};transition:background 0.3s ease,height 0.3s ease;pointer-events:none;"></div>
           </div>
@@ -281,6 +282,17 @@
 
   static getStubConfig() {
     return { entities: [{ entity: "light.example" }] };
+  }
+
+  static getLayoutOptions() {
+    return {
+      grid_rows: 4,
+      grid_columns: 2,
+      grid_min_rows: 2,
+      grid_max_rows: 12,
+      grid_min_columns: 1,
+      grid_max_columns: 12,
+    };
   }
 
   static getConfigElement() {
