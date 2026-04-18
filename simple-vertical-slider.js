@@ -4,9 +4,11 @@
     if (!this._config) return; // setConfig nu a rulat inca
 
     if (!this.content) {
-      this.style.cssText = 'display:block;height:100%;';
+      // align-self:stretch — forteaza celula grid HA sa intinda cardul pe toata inaltimea alocata
+      // margin:0 — elimina orice offset implicit de la HA
+      this.style.cssText = 'display:block;height:100%;min-height:0;align-self:stretch;margin:0;';
       this.innerHTML = `
-        <ha-card style="background:none;border:none;box-shadow:none;height:100%;display:flex;flex-direction:column;">
+        <ha-card style="background:none;border:none;box-shadow:none;padding:0;margin:0;height:100%;min-height:0;display:flex;flex-direction:column;box-sizing:border-box;">
           <div id="container" style="flex:1;min-height:0;display:flex;flex-direction:row;gap:12px;justify-content:center;align-items:stretch;overflow-x:auto;padding:10px 5px;box-sizing:border-box;"></div>
         </ha-card>
       `;
