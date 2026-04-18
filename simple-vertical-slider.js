@@ -28,11 +28,16 @@
       const stateObj = hass.states[entityId];
       if (!stateObj) return;
 
-      const { isOn, brightness, bulbColor, name, isSwitch } = this._getState(stateObj, entObj);
+      const { isOn, brightness, bulbColor, name, isSwitch, supportsColor, supportsColorTemp, colorTempKelvin, colorTempPct } = this._getState(stateObj, entObj);
       const cursor = isSwitch ? 'pointer' : 'ns-resize';
+      // Modul implicit: brightness (se poate schimba prin long press pe power)
+      const initMode = 'brightness';
 
       const column = document.createElement("div");
-      column.style.cssText = "display:flex;flex-direction:column;align-items:center;flex:1;min-width:80px;background:#1a1a1a;padding:10px 5px 12px 5px;border-radius:35px;gap:10px;min-height:0;";
+      column.style.cssText = "display:flex;flex-direction:column;align-items:center;flex:1;min-width:80px;background:#1a1a1a;padding:10px 5px 12px 5px;border-radius:35px;gap:10px;min-height:0;position:relative;";
+
+      // Gradient pentru color temp: cald (2000K) -> rece (6500K)
+      const ctGradient = 'linear-gradient(to top, #ff8c00, #ffd27f, #fff5e0, #e8f0ff, #b3ccff)';
 
       column.innerHTML = `
         <div style="color:white;font-weight:600;font-size:13px;opacity:0.9;text-align:center;height:20px;overflow:hidden;pointer-events:none;">${name}</div>
@@ -45,8 +50,18 @@
             <div class="overlay-pct" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10;color:white;font-weight:700;font-size:20px;text-shadow:0 1px 6px rgba(0,0,0,0.9);pointer-events:none;white-space:nowrap;">0%</div>
           </div>
         </div>
-        <div class="power-btn" style="width:55px;height:55px;border-radius:50%;background:${isOn ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)'};display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid rgba(255,255,255,0.05);">
-          <ha-icon icon="mdi:power" style="color:${isOn ? bulbColor : '#666'};--mdc-icon-size:26px;pointer-events:none;"></ha-icon>
+        <div style="position:relative;width:55px;height:55px;">
+          <div class="power-btn" style="width:55px;height:55px;border-radius:50%;background:${isOn ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)'};display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid rgba(255,255,255,0.05);">
+            <ha-icon icon="mdi:power" style="color:${isOn ? bulbColor : '#666'};--mdc-icon-size:26px;pointer-events:none;"></ha-icon>
+          </div>
+          <div class="mode-menu" style="display:none;position:absolute;bottom:62px;left:50%;transform:translateX(-50%);background:#222;border-radius:16px;padding:6px;display:none;flex-direction:column;gap:5px;z-index:20;box-shadow:0 4px 16px rgba(0,0,0,0.7);min-width:48px;align-items:center;">
+            <div class="mode-btn" data-mode="brightness" title="Brightness" style="width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(255,255,255,0.07);">
+              <ha-icon icon="mdi:brightness-6" style="--mdc-icon-size:22px;pointer-events:none;"></ha-icon>
+            </div>
+            <div class="mode-btn" data-mode="color" title="Color / Temp" style="width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(255,255,255,0.07);">
+              <ha-icon icon="mdi:thermometer" style="--mdc-icon-size:22px;pointer-events:none;"></ha-icon>
+            </div>
+          </div>
         </div>
       `;
 
@@ -58,7 +73,8 @@
         oFill:             column.querySelector(".overlay-fill"),
         oPct:              column.querySelector(".overlay-pct"),
         powerBtn:          column.querySelector(".power-btn"),
-        powerIcon:         column.querySelector("ha-icon"),
+        powerIcon:         column.querySelector(".power-btn ha-icon"),
+        modeMenu:          column.querySelector(".mode-menu"),
         track:             column.querySelector(".slider-track"),
         isDragging:        false,
         raf:               null,
@@ -66,16 +82,126 @@
         dragValue:         -1,
         currentBrightness: isOn ? brightness : 0,
         isSwitch:          isSwitch,
+        sliderMode:        'brightness',   // 'brightness' | 'color'
+        supportsColor:     supportsColor,
+        supportsColorTemp: supportsColorTemp,
+        colorTempMin:      stateObj.attributes.min_color_temp_kelvin || 2000,
+        colorTempMax:      stateObj.attributes.max_color_temp_kelvin || 6500,
+        ctGradient:        ctGradient,
       };
       this._cols[entityId] = refs;
 
-      this._attachListeners(entityId, refs);
+      // Ascunde iconita de culoare daca lumina nu suporta
+      const colorModeBtn = column.querySelector('.mode-btn[data-mode="color"]');
+      if (colorModeBtn && !supportsColor && !supportsColorTemp) {
+        colorModeBtn.style.display = 'none';
+      }
+      // Daca nu suporta culoare, nu afisam meniu deloc la long press
+      refs.hasColorControl = supportsColor || supportsColorTemp;
 
-      refs.powerBtn.addEventListener("click", () => {
-        const domain = entityId.split('.')[0];
-        this._hass.callService(domain, "toggle", { entity_id: entityId });
+      this._attachListeners(entityId, refs);
+      this._attachPowerBtn(entityId, refs);
+      this._attachModeMenu(entityId, refs);
+    });
+  }
+
+  _attachPowerBtn(entityId, refs) {
+    const POWER_HOLD = 600;
+    let powerTimer = null;
+    let powerMoved = false;
+
+    const showMenu = () => {
+      if (!refs.hasColorControl) return;
+      // Mostra numai butonul pentru modul OPUS celui curent
+      refs.modeMenu.querySelectorAll('.mode-btn').forEach(b => {
+        b.style.display = b.dataset.mode === refs.sliderMode ? 'none' : 'flex';
+      });
+      refs.modeMenu.style.display = 'flex';
+    };
+
+    const hideMenu = () => { refs.modeMenu.style.display = 'none'; };
+
+    // Click scurt → toggle
+    // Long press → meniu mod
+    refs.powerBtn.addEventListener('pointerdown', (e) => {
+      powerMoved = false;
+      powerTimer = setTimeout(() => {
+        powerTimer = null;
+        showMenu();
+      }, POWER_HOLD);
+    });
+
+    refs.powerBtn.addEventListener('pointermove', () => { powerMoved = true; });
+
+    refs.powerBtn.addEventListener('pointerup', (e) => {
+      if (powerTimer !== null) {
+        clearTimeout(powerTimer);
+        powerTimer = null;
+        if (!powerMoved) {
+          hideMenu();
+          const domain = entityId.split('.')[0];
+          this._hass.callService(domain, 'toggle', { entity_id: entityId });
+        }
+      }
+      // Daca timer expirat (long press) → meniu deja deschis, nu facem nimic
+    });
+
+    refs.powerBtn.addEventListener('pointerleave', () => {
+      if (powerTimer !== null) { clearTimeout(powerTimer); powerTimer = null; }
+    });
+
+    // Inchide meniu la click in afara
+    document.addEventListener('pointerdown', (e) => {
+      if (refs.modeMenu.style.display !== 'none' && !refs.modeMenu.contains(e.target) && e.target !== refs.powerBtn) {
+        hideMenu();
+      }
+    });
+  }
+
+  _attachModeMenu(entityId, refs) {
+    refs.modeMenu.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        refs.sliderMode = btn.dataset.mode;
+        refs.modeMenu.style.display = 'none';
+        this._applySliderMode(entityId, refs);
       });
     });
+  }
+
+  _applySliderMode(entityId, refs) {
+    const stateObj = this._hass.states[entityId];
+    if (!stateObj) return;
+    const entObj = this._config.entities.find(e => (typeof e === 'string' ? e : e.entity) === entityId) || { entity: entityId };
+    const { isOn, brightness, bulbColor, colorTempPct } = this._getState(stateObj, entObj);
+
+    if (refs.sliderMode === 'color') {
+      // Mod culoare/temp: track cu gradient, fill = pozitia temp curenta
+      refs.track.style.background = refs.ctGradient;
+      refs.fill.style.transition = 'none';
+      refs.fill.style.background = 'transparent';
+      refs.fill.style.height = '100%';
+      // Indicator de pozitie: o linie orizontala
+      refs.fill.style.background = 'transparent';
+      // Folosim overlay-ul ca indicator vizual de pozitie
+      // De fapt: facem track transparent + fill e un dreptunghi de sus pana la pozitie
+      const pct = colorTempPct !== null ? colorTempPct : 50;
+      refs.fill.style.height = `${100 - pct}%`;
+      refs.fill.style.background = 'rgba(0,0,0,0.45)';
+      refs.fill.style.position = 'absolute';
+      refs.fill.style.top = '0';
+      refs.fill.style.bottom = 'unset';
+      refs.oPct.style.display = 'none';
+    } else {
+      // Mod brightness: resetam la normal
+      refs.track.style.background = 'rgba(255,255,255,0.08)';
+      refs.fill.style.position = 'absolute';
+      refs.fill.style.top = 'unset';
+      refs.fill.style.bottom = '0';
+      refs.fill.style.height = `${isOn ? brightness : 0}%`;
+      refs.fill.style.background = isOn ? bulbColor : '#333';
+      refs.fill.style.transition = 'background 0.3s ease,height 0.3s ease';
+      refs.oPct.style.display = '';
+    }
   }
 
   _attachListeners(entityId, refs) {
@@ -113,10 +239,11 @@
       refs.overlay.style.opacity = '0';
       if (commit && refs.dragValue >= 0) {
         const pct = refs.dragValue;
-        // Switch-urile nu au dimmer — trimitem binar
         if (refs.isSwitch) {
           const domain = entityId.split('.')[0];
           this._hass.callService(domain, pct >= 50 ? "turn_on" : "turn_off", { entity_id: entityId });
+        } else if (refs.sliderMode === 'color') {
+          this._sendColorCmd(entityId, refs, pct);
         } else if (pct > 0) {
           this._hass.callService("light", "turn_on", { entity_id: entityId, brightness_pct: pct });
         } else {
@@ -132,6 +259,8 @@
       if (refs.isSwitch) {
         const domain = entityId.split('.')[0];
         this._hass.callService(domain, pct >= 50 ? "turn_on" : "turn_off", { entity_id: entityId });
+      } else if (refs.sliderMode === 'color') {
+        this._sendColorCmd(entityId, refs, pct);
       } else if (pct > 0) {
         this._hass.callService("light", "turn_on", { entity_id: entityId, brightness_pct: pct });
       } else {
@@ -244,6 +373,18 @@
     });
   }
 
+  _sendColorCmd(entityId, refs, pct) {
+    // pct 0 = cald (min kelvin), pct 100 = rece (max kelvin)
+    if (refs.supportsColorTemp) {
+      const kelvin = Math.round(refs.colorTempMin + (pct / 100) * (refs.colorTempMax - refs.colorTempMin));
+      this._hass.callService('light', 'turn_on', { entity_id: entityId, color_temp_kelvin: kelvin });
+    } else if (refs.supportsColor) {
+      // Mapping pct -> hue: 0%=rosu(0), 25%=galben(60), 50%=verde(120), 75%=albastru(240), 100%=magenta(300)
+      const hue = Math.round((pct / 100) * 360);
+      this._hass.callService('light', 'turn_on', { entity_id: entityId, hs_color: [hue, 100] });
+    }
+  }
+
   _updateColumns(hass) {
     this._config.entities.forEach((ent) => {
       const entityId = typeof ent === 'string' ? ent : ent.entity;
@@ -255,12 +396,19 @@
       const stateObj = hass.states[entityId];
       if (!stateObj) return;
 
-      const { isOn, brightness, bulbColor } = this._getState(stateObj, entObj);
+      const { isOn, brightness, bulbColor, colorTempPct } = this._getState(stateObj, entObj);
       const pct = isOn ? brightness : 0;
 
       refs.currentBrightness = pct;
-      refs.fill.style.height = `${pct}%`;
-      refs.fill.style.background = isOn ? bulbColor : '#333';
+
+      if (refs.sliderMode === 'color') {
+        // In mod culoare: actualizam pozitia indicatorului
+        const cp = colorTempPct !== null ? colorTempPct : 50;
+        refs.fill.style.height = `${100 - cp}%`;
+      } else {
+        refs.fill.style.height = `${pct}%`;
+        refs.fill.style.background = isOn ? bulbColor : '#333';
+      }
       refs.powerBtn.style.background = isOn ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)';
       refs.powerIcon.style.color = isOn ? bulbColor : '#666';
     });
@@ -271,20 +419,47 @@
     const isSwitch = domain === 'switch';
     const isOn = stateObj.state === "on";
     const name = ent.name || stateObj.attributes.friendly_name || "Light";
+    const supportedColorModes = stateObj.attributes.supported_color_modes || [];
+    const supportsColorTemp = supportedColorModes.some(m => m === 'color_temp');
+    const supportsColor = supportedColorModes.some(m => ['rgb', 'rgbw', 'rgbww', 'hs', 'xy'].includes(m));
     let brightness;
     if (isSwitch) {
-      // Switch-urile sunt binare: 100% cand ON, 0% cand OFF
       brightness = isOn ? 100 : 0;
     } else {
       brightness = stateObj.attributes.brightness
         ? Math.round((stateObj.attributes.brightness / 255) * 100)
-        : (isOn ? 100 : 0); // light ON fara brightness attr = 100%
+        : (isOn ? 100 : 0);
     }
     let bulbColor = "#fdd835";
     if (isOn && stateObj.attributes.rgb_color) {
       bulbColor = `rgb(${stateObj.attributes.rgb_color.join(',')})`;
+    } else if (isOn && stateObj.attributes.color_temp_kelvin) {
+      bulbColor = this._kelvinToColor(stateObj.attributes.color_temp_kelvin);
     }
-    return { isOn, name, brightness, bulbColor, isSwitch };
+    // Pozitia curenta in modul color temp (0=cald, 100=rece)
+    let colorTempPct = null;
+    if (supportsColorTemp && stateObj.attributes.color_temp_kelvin) {
+      const minK = stateObj.attributes.min_color_temp_kelvin || 2000;
+      const maxK = stateObj.attributes.max_color_temp_kelvin || 6500;
+      colorTempPct = Math.round(((stateObj.attributes.color_temp_kelvin - minK) / (maxK - minK)) * 100);
+    }
+    return { isOn, name, brightness, bulbColor, isSwitch, supportsColor, supportsColorTemp, colorTempPct };
+  }
+
+  _kelvinToColor(k) {
+    // Aproximare simpla: 2000K=portocaliu, 4000K=alb cald, 6500K=alb rece
+    k = Math.max(1000, Math.min(12000, k));
+    let r, g, b;
+    if (k <= 6600) {
+      r = 255;
+      g = Math.round(99.4708025861 * Math.log(k / 100) - 161.1195681661);
+      b = k <= 2000 ? 0 : Math.round(138.5177312231 * Math.log(k / 100 - 10) - 305.0447927307);
+    } else {
+      r = Math.round(329.698727446 * Math.pow(k / 100 - 60, -0.1332047592));
+      g = Math.round(288.1221695283 * Math.pow(k / 100 - 60, -0.0755148492));
+      b = 255;
+    }
+    return `rgb(${Math.min(255,Math.max(0,r))},${Math.min(255,Math.max(0,g))},${Math.min(255,Math.max(0,b))})`;
   }
 
   setConfig(config) {
