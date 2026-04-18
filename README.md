@@ -4,18 +4,6 @@ A minimalist Home Assistant card that displays vertical brightness sliders for y
 
 ![Preview](images/preview.svg)
 
----
-
-## Features
-
-- **Tap** anywhere on a slider → sets brightness instantly at that position
-- **Hold** (≥ 200 ms) → a dark overlay appears; drag to the desired brightness and release to confirm
-- **Power button** → toggles the light on/off
-- Multiple lights side by side in a single card
-- Visual editor in the HA dashboard (no YAML required)
-- Works on mobile and desktop
-
----
 
 ## Installation via HACS
 
