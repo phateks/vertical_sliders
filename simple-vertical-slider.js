@@ -159,9 +159,17 @@
   }
 
   _attachModeMenu(entityId, refs) {
+    // stopPropagation pe tot meniul: previne ca documentul sa inchida meniul cand apesi in el
+    refs.modeMenu.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+    });
+
     refs.modeMenu.querySelectorAll('.mode-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        refs.sliderMode = btn.dataset.mode;
+      // pointerup in loc de click: mai rapid si nu conflicta cu hide-ul de document
+      btn.addEventListener('pointerup', (e) => {
+        e.stopPropagation();
+        const mode = btn.dataset.mode;
+        refs.sliderMode = mode;
         refs.modeMenu.style.display = 'none';
         this._applySliderMode(entityId, refs);
       });
@@ -175,21 +183,19 @@
     const { isOn, brightness, bulbColor, colorTempPct } = this._getState(stateObj, entObj);
 
     if (refs.sliderMode === 'color') {
-      // Mod culoare/temp: track cu gradient, fill = pozitia temp curenta
+      // Track: gradient cald→rece vizibil pe toata suprafata
       refs.track.style.background = refs.ctGradient;
+      refs.track.style.overflow = 'hidden';
+      // Fill: masca neagra de sus pana la pozitia curenta (restul = culoarea vizibila)
       refs.fill.style.transition = 'none';
-      refs.fill.style.background = 'transparent';
-      refs.fill.style.height = '100%';
-      // Indicator de pozitie: o linie orizontala
-      refs.fill.style.background = 'transparent';
-      // Folosim overlay-ul ca indicator vizual de pozitie
-      // De fapt: facem track transparent + fill e un dreptunghi de sus pana la pozitie
-      const pct = colorTempPct !== null ? colorTempPct : 50;
-      refs.fill.style.height = `${100 - pct}%`;
-      refs.fill.style.background = 'rgba(0,0,0,0.45)';
       refs.fill.style.position = 'absolute';
       refs.fill.style.top = '0';
       refs.fill.style.bottom = 'unset';
+      const pct = colorTempPct !== null ? colorTempPct : 50;
+      // pct=0 cald=jos, pct=100 rece=sus; masca de sus pana la (100-pct)%
+      refs.fill.style.height = `${100 - pct}%`;
+      refs.fill.style.background = 'rgba(0,0,0,0.55)';
+      refs.fill.style.width = '100%';
       refs.oPct.style.display = 'none';
     } else {
       // Mod brightness: resetam la normal
