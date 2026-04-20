@@ -29,10 +29,9 @@
       const stateObj = hass.states[entityId];
       if (!stateObj) { this._cols.push(null); return; }
 
-      const { isOn, brightness, bulbColor, name, isSwitch, supportsColor, supportsColorTemp, colorTempKelvin, colorTempPct } = this._getState(stateObj, entObj);
+      const { isOn, brightness, bulbColor, name, isSwitch, isFan, supportsColor, supportsColorTemp, colorTempKelvin, colorTempPct } = this._getState(stateObj, entObj);
       const cursor = isSwitch ? 'pointer' : 'ns-resize';
-      // Modul implicit: brightness (se poate schimba prin long press pe power)
-      const initMode = 'brightness';
+      const powerIcon = isFan ? 'mdi:fan' : 'mdi:power';
 
       const column = document.createElement("div");
       column.style.cssText = "display:flex;flex-direction:column;align-items:center;flex:1;min-width:80px;background:#1a1a1a;padding:10px 5px 12px 5px;border-radius:35px;gap:10px;min-height:0;position:relative;";
@@ -53,7 +52,7 @@
         </div>
         <div style="position:relative;width:55px;height:55px;">
           <div class="power-btn" style="width:55px;height:55px;border-radius:50%;background:${isOn ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)'};display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid rgba(255,255,255,0.05);">
-            <ha-icon icon="mdi:power" style="color:${isOn ? bulbColor : '#666'};--mdc-icon-size:26px;pointer-events:none;"></ha-icon>
+            <ha-icon icon="${powerIcon}" style="color:${isOn ? bulbColor : '#666'};--mdc-icon-size:26px;pointer-events:none;"></ha-icon>
           </div>
           <div class="mode-menu" style="display:none;position:absolute;bottom:62px;left:50%;transform:translateX(-50%);background:#222;border-radius:16px;padding:6px;display:none;flex-direction:column;gap:5px;z-index:20;box-shadow:0 4px 16px rgba(0,0,0,0.7);min-width:48px;align-items:center;">
             <div class="mode-btn" data-mode="brightness" title="Brightness" style="width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:rgba(255,255,255,0.07);">
@@ -83,6 +82,7 @@
         dragValue:         -1,
         currentBrightness: isOn ? brightness : 0,
         isSwitch:          isSwitch,
+        isFan:             isFan,
         sliderMode:        'brightness',   // 'brightness' | 'color'
         supportsColor:     supportsColor,
         supportsColorTemp: supportsColorTemp,
@@ -98,7 +98,7 @@
         colorModeBtn.style.display = 'none';
       }
       // Daca nu suporta culoare, nu afisam meniu deloc la long press
-      refs.hasColorControl = supportsColor || supportsColorTemp;
+      refs.hasColorControl = !isFan && (supportsColor || supportsColorTemp);
 
       this._attachListeners(entityId, refs);
       this._attachPowerBtn(entityId, refs);
@@ -251,6 +251,12 @@
         if (refs.isSwitch) {
           const domain = entityId.split('.')[0];
           this._hass.callService(domain, pct >= 50 ? "turn_on" : "turn_off", { entity_id: entityId });
+        } else if (refs.isFan) {
+          if (pct > 0) {
+            this._hass.callService('fan', 'turn_on', { entity_id: entityId, percentage: pct });
+          } else {
+            this._hass.callService('fan', 'turn_off', { entity_id: entityId });
+          }
         } else if (refs.sliderMode === 'color') {
           this._sendColorCmd(entityId, refs, pct);
         } else if (pct > 0) {
@@ -268,6 +274,12 @@
       if (refs.isSwitch) {
         const domain = entityId.split('.')[0];
         this._hass.callService(domain, pct >= 50 ? "turn_on" : "turn_off", { entity_id: entityId });
+      } else if (refs.isFan) {
+        if (pct > 0) {
+          this._hass.callService('fan', 'turn_on', { entity_id: entityId, percentage: pct });
+        } else {
+          this._hass.callService('fan', 'turn_off', { entity_id: entityId });
+        }
       } else if (refs.sliderMode === 'color') {
         this._sendColorCmd(entityId, refs, pct);
       } else if (pct > 0) {
@@ -296,7 +308,7 @@
       if (!Array.from(e.changedTouches).find(t => t.identifier === refs.touchId)) return;
       removeTouchListeners();
       if (holdTimer !== null) {
-        // Tap scurt pe light dimmabil
+        // Tap scurt pe light/fan dimmabil
         clearTimeout(holdTimer);
         holdTimer = null;
         sendDirect(tapPct);
@@ -426,6 +438,7 @@
   _getState(stateObj, ent) {
     const domain = stateObj.entity_id.split('.')[0];
     const isSwitch = domain === 'switch';
+    const isFan = domain === 'fan';
     const isOn = stateObj.state === "on";
     const name = ent.name || stateObj.attributes.friendly_name || "Light";
     const supportedColorModes = stateObj.attributes.supported_color_modes || [];
@@ -434,16 +447,24 @@
     let brightness;
     if (isSwitch) {
       brightness = isOn ? 100 : 0;
+    } else if (isFan) {
+      // Fan: percentage 0-100 (null = on fara viteza setata = 100%)
+      brightness = stateObj.attributes.percentage != null
+        ? Math.round(stateObj.attributes.percentage)
+        : (isOn ? 100 : 0);
     } else {
       brightness = stateObj.attributes.brightness
         ? Math.round((stateObj.attributes.brightness / 255) * 100)
         : (isOn ? 100 : 0);
     }
-    let bulbColor = "#fdd835";
-    if (isOn && stateObj.attributes.rgb_color) {
-      bulbColor = `rgb(${stateObj.attributes.rgb_color.join(',')})`;
-    } else if (isOn && stateObj.attributes.color_temp_kelvin) {
-      bulbColor = this._kelvinToColor(stateObj.attributes.color_temp_kelvin);
+    // Fan: culoare albastra; light: galben/rgb/temp
+    let bulbColor = isFan ? '#4fc3f7' : '#fdd835';
+    if (!isFan) {
+      if (isOn && stateObj.attributes.rgb_color) {
+        bulbColor = `rgb(${stateObj.attributes.rgb_color.join(',')})`;
+      } else if (isOn && stateObj.attributes.color_temp_kelvin) {
+        bulbColor = this._kelvinToColor(stateObj.attributes.color_temp_kelvin);
+      }
     }
     // Pozitia curenta in modul color temp (0=cald, 100=rece)
     let colorTempPct = null;
@@ -452,7 +473,7 @@
       const maxK = stateObj.attributes.max_color_temp_kelvin || 6500;
       colorTempPct = Math.round(((stateObj.attributes.color_temp_kelvin - minK) / (maxK - minK)) * 100);
     }
-    return { isOn, name, brightness, bulbColor, isSwitch, supportsColor, supportsColorTemp, colorTempPct };
+    return { isOn, name, brightness, bulbColor, isSwitch, isFan, supportsColor, supportsColorTemp, colorTempPct };
   }
 
   _kelvinToColor(k) {
@@ -677,7 +698,7 @@ class SimpleVerticalSliderEditor extends HTMLElement {
       picker.hass = this._hass;
       picker.value = ent.entity || '';
       picker.label = 'Light entity';
-      picker.includeDomains = ['light', 'switch'];
+      picker.includeDomains = ['light', 'switch', 'fan'];
       picker.allowCustomEntity = false;
     });
 
