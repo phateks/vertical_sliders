@@ -13,7 +13,7 @@
         </ha-card>
       `;
       this.content = this.querySelector("#container");
-      this._cols = {};
+      this._cols = [];
       this._buildColumns(hass);
     } else {
       this._updateColumns(hass);
@@ -21,12 +21,13 @@
   }
 
   _buildColumns(hass) {
-    this._config.entities.forEach((ent) => {
+    this._cols = [];
+    this._config.entities.forEach((ent, idx) => {
       // Suporta atat { entity: "..." } cat si string simplu
       const entityId = typeof ent === 'string' ? ent : ent.entity;
       const entObj = typeof ent === 'string' ? { entity: ent } : ent;
       const stateObj = hass.states[entityId];
-      if (!stateObj) return;
+      if (!stateObj) { this._cols.push(null); return; }
 
       const { isOn, brightness, bulbColor, name, isSwitch, supportsColor, supportsColorTemp, colorTempKelvin, colorTempPct } = this._getState(stateObj, entObj);
       const cursor = isSwitch ? 'pointer' : 'ns-resize';
@@ -89,7 +90,7 @@
         colorTempMax:      stateObj.attributes.max_color_temp_kelvin || 6500,
         ctGradient:        ctGradient,
       };
-      this._cols[entityId] = refs;
+      this._cols.push(refs);
 
       // Ascunde iconita de culoare daca lumina nu suporta
       const colorModeBtn = column.querySelector('.mode-btn[data-mode="color"]');
@@ -101,7 +102,7 @@
 
       this._attachListeners(entityId, refs);
       this._attachPowerBtn(entityId, refs);
-      this._attachModeMenu(entityId, refs);
+      this._attachModeMenu(idx, refs);
     });
   }
 
@@ -158,7 +159,7 @@
     });
   }
 
-  _attachModeMenu(entityId, refs) {
+  _attachModeMenu(idx, refs) {
     // stopPropagation pe tot meniul: previne ca documentul sa inchida meniul cand apesi in el
     refs.modeMenu.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
@@ -171,7 +172,9 @@
         const mode = btn.dataset.mode;
         refs.sliderMode = mode;
         refs.modeMenu.style.display = 'none';
-        this._applySliderMode(entityId, refs);
+        const entityId = this._config.entities[idx];
+        const eid = typeof entityId === 'string' ? entityId : entityId.entity;
+        this._applySliderMode(eid, refs);
       });
     });
   }
@@ -392,10 +395,10 @@
   }
 
   _updateColumns(hass) {
-    this._config.entities.forEach((ent) => {
+    this._config.entities.forEach((ent, idx) => {
       const entityId = typeof ent === 'string' ? ent : ent.entity;
       const entObj   = typeof ent === 'string' ? { entity: ent } : ent;
-      const refs = this._cols[entityId];
+      const refs = this._cols[idx];
       if (!refs) return;
       if (refs.isDragging) return;
 
@@ -478,8 +481,8 @@
     };
     // Reseteaza DOM daca lista de entitati s-a schimbat
     if (this.content && this._cols) {
-      const cur = Object.keys(this._cols);
-      const next = this._config.entities.map(e => e.entity);
+      const cur = this._config.entities.map(e => typeof e === 'string' ? e : e.entity);
+      const next = config.entities ? config.entities.map(e => typeof e === 'string' ? e : e.entity) : [];
       if (cur.length !== next.length || cur.some((e, i) => e !== next[i])) {
         this.content = null;
       }
