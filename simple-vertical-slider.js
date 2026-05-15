@@ -157,6 +157,38 @@
         hideMenu();
       }
     });
+
+    // Fallback pentru browsere/embedded devices care nu suportă Pointer Events
+    if (!window.PointerEvent) {
+      // Touch fallback: comportament similar cu pointer handlers
+      refs.powerBtn.addEventListener('touchstart', (e) => {
+        powerMoved = false;
+        powerTimer = setTimeout(() => {
+          powerTimer = null;
+          showMenu();
+        }, POWER_HOLD);
+      }, { passive: true });
+
+      refs.powerBtn.addEventListener('touchmove', () => { powerMoved = true; }, { passive: true });
+
+      refs.powerBtn.addEventListener('touchend', (e) => {
+        if (powerTimer !== null) {
+          clearTimeout(powerTimer);
+          powerTimer = null;
+          if (!powerMoved) {
+            hideMenu();
+            const domain = entityId.split('.')[0];
+            this._hass.callService(domain, 'toggle', { entity_id: entityId });
+          }
+        }
+      });
+
+      // Click fallback for very old webviews that fire click but not pointer/touch
+      refs.powerBtn.addEventListener('click', (e) => {
+        const domain = entityId.split('.')[0];
+        this._hass.callService(domain, 'toggle', { entity_id: entityId });
+      });
+    }
   }
 
   _attachModeMenu(idx, refs) {
