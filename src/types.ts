@@ -1,6 +1,6 @@
 import { LovelaceCardConfig } from "custom-card-helpers";
 
-export const CARD_VERSION = "0.1.1";
+export const CARD_VERSION = "0.1.2";
 
 export type SliderStyle = "tile" | "column";
 export type DragMode = "relative" | "absolute";
