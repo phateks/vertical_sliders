@@ -12,9 +12,11 @@ Works with lights (and light groups), fans, switches, `input_boolean`, `number` 
 
 ## Features
 
-- **The whole tile is the slider.** Tap toggles. Hold and drag up/down changes the
-  level, starting from where it is now (relative drag). The percentage appears only
-  while you drag.
+- **The whole tile is the slider.** Tap toggles. On a phone, touch and hold for a
+  moment (you feel a tick and the percentage appears), then drag up/down to change
+  the level from where it is now. With a mouse, drag right away.
+- **Safe to scroll over.** A finger that moves before the hold just scrolls the page:
+  nothing turns on, nothing opens. A touch that stops a scroll is not a tap.
 - **One slider or many** in the same card (`entity` or `entities`).
 - **Sizes itself.** Icon, name, percentage, padding and corners scale with the
   tile's real size. Short tiles put the icon and name on one row; very narrow tiles
@@ -22,8 +24,8 @@ Works with lights (and light groups), fans, switches, `input_boolean`, `number` 
 - **Visible when off.** Off tiles keep a faint tint of their accent colour, so they
   don't disappear on dark backgrounds. On tiles get a coloured border and glow.
 - **Accent per slider**, or the light's own colour.
-- **Hold menu** on lights with colour temperature: brightness, colour temperature,
-  more-info. On other entities, hold opens more-info.
+- **Long press** (~0.8 s without moving) on lights with colour temperature opens a menu:
+  brightness, colour temperature, more-info. On other entities it opens more-info.
 - Light groups, fan speed steps, number ranges with units, media volume.
 - The value you set stays on screen until Home Assistant confirms it.
 - Keyboard: Enter toggles, arrow keys change the level.
@@ -108,7 +110,9 @@ entities:
 
 ### Behaviour by domain
 
-| Domain | Tap | Drag | Hold |
+Drag = touch, hold ~0.3 s, then move (mouse: move right away). Long press = ~0.8 s still.
+
+| Domain | Tap | Drag | Long press |
 |---|---|---|---|
 | `light` | toggle | brightness (0 % turns off) | menu if colour temp, else more-info |
 | `fan` | toggle | speed (snaps to the fan's steps) | more-info |

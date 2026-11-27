@@ -14,8 +14,16 @@ export interface SliderOptions {
   defaultAccent?: string;
 }
 
-const HOLD_MS = 500;
-const MOVE_PX = 6;
+/** Touch: hold still this long to start dimming (until then the page can scroll). */
+const ARM_MS = 280;
+/** Hold still this long for the menu / more-info. */
+const HOLD_MS = 800;
+const MOVE_PX = 8;
+/** A touch that starts this soon after a scroll only stops the scroll: no tap. */
+const SCROLL_GRACE_MS = 350;
+
+let lastScroll = 0;
+window.addEventListener("scroll", () => (lastScroll = Date.now()), { capture: true, passive: true });
 /** How long a sent value is shown while waiting for HA to report it. */
 const PENDING_MS = 4000;
 
@@ -31,7 +39,32 @@ export class SvsSlider extends LitElement {
   @state() private _pending: { value: number; until: number } | null = null;
 
   private _model?: SliderModel;
-  private _p = { id: -1, y0: 0, start: 0, moved: false, held: false, timer: 0 as unknown as number };
+  private _p = {
+    id: -1,
+    touch: false,
+    x0: 0,
+    y0: 0,
+    start: 0,
+    moved: false,
+    armed: false,
+    held: false,
+    noTap: false,
+    armTimer: 0,
+    holdTimer: 0,
+  };
+
+  constructor() {
+    super();
+    // Once armed, a touch drag must not scroll the page. Only a non-passive
+    // touchmove can stop it; until then touch-action: pan-y lets the page scroll.
+    this.addEventListener(
+      "touchmove",
+      (e) => {
+        if (this._p.id !== -1 && this._p.armed && e.cancelable) e.preventDefault();
+      },
+      { passive: false }
+    );
+  }
 
   static styles = sliderStyles;
 
@@ -48,7 +81,7 @@ export class SvsSlider extends LitElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
-    clearTimeout(this._p.timer);
+    this._clearTimers();
   }
 
   /* ------------------------------------------------------------------ render */
@@ -175,86 +208,141 @@ export class SvsSlider extends LitElement {
   }
 
   /* ------------------------------------------------------------- interaction */
+  /*
+   * Touch:  quick tap = toggle · move first = page scroll (nothing happens)
+   *         hold ~0.3 s still, then drag = dim · hold ~0.8 s still = menu / more-info
+   * Mouse:  click = toggle · drag = dim right away · hold = menu / more-info
+   */
 
   private _region: "tile" | "track" | "power" = "tile";
+  /** Element the gesture started on (currentTarget is gone inside timers). */
+  private _el?: HTMLElement;
+
+  private _clearTimers(): void {
+    clearTimeout(this._p.armTimer);
+    clearTimeout(this._p.holdTimer);
+  }
 
   private _down(e: PointerEvent, region: "tile" | "track" | "power"): void {
     const m = this._model;
     if (!m || this._menu || (e.pointerType === "mouse" && e.button !== 0)) return;
-    if (m.unavailable) {
-      if (region !== "track") this._p.timer = window.setTimeout(() => this._moreInfo(), HOLD_MS);
-      return;
-    }
-    this._region = region;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    clearTimeout(this._p.timer);
+    this._clearTimers();
+    const touch = e.pointerType !== "mouse";
     const shown = this._pending ? this._pending.value : m.level;
+    this._region = region;
+    this._el = e.currentTarget as HTMLElement;
     this._p = {
       id: e.pointerId,
+      touch,
+      x0: e.clientX,
       y0: e.clientY,
       start: this._mode === "temp" ? shown : m.on ? shown : 0,
       moved: false,
+      armed: false,
       held: false,
-      timer: 0,
+      noTap: Date.now() - lastScroll < SCROLL_GRACE_MS,
+      armTimer: 0,
+      holdTimer: 0,
     };
-    if (region !== "track") this._p.timer = window.setTimeout(() => this._hold(), HOLD_MS);
-    // the column track jumps to the finger right away in absolute mode
-    if (region === "track" && m.draggable && this.opts.dragMode === "absolute") {
-      this._p.moved = true;
-      this._drag = this._absolute(e);
+    if (m.unavailable) {
+      if (region !== "track") this._p.holdTimer = window.setTimeout(() => this._hold(), HOLD_MS);
+      return;
     }
+    const canDrag = m.draggable && region !== "power";
+    if (!touch) {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      this._p.armed = canDrag;
+      if (canDrag && region === "track" && this.opts.dragMode === "absolute") {
+        this._p.moved = true;
+        this._drag = this._absolute(e);
+      }
+    } else if (canDrag) {
+      this._p.armTimer = window.setTimeout(() => this._arm(), ARM_MS);
+    }
+    if (region !== "track") this._p.holdTimer = window.setTimeout(() => this._hold(), HOLD_MS);
+  }
+
+  /** Touch held still long enough: from now on vertical movement dims. */
+  private _arm(): void {
+    const m = this._model;
+    if (!m || this._p.id === -1 || this._p.moved) return;
+    this._p.armed = true;
+    this._haptic("light");
+    try {
+      this._el?.setPointerCapture(this._p.id);
+    } catch {
+      /* pointer already gone */
+    }
+    this._drag =
+      this._region === "track" && this.opts.dragMode === "absolute" ? this._absoluteAt(this._p.y0) : this._p.start;
   }
 
   private _move = (e: PointerEvent): void => {
     const m = this._model;
     if (!m || e.pointerId !== this._p.id || this._p.held || this._region === "power") return;
     const dy = this._p.y0 - e.clientY;
+    const dist = Math.max(Math.abs(dy), Math.abs(this._p.x0 - e.clientX));
+    if (!this._p.armed) {
+      // touch moved before arming: it's a page scroll, drop the gesture
+      if (dist >= MOVE_PX) this._abort();
+      return;
+    }
     if (!this._p.moved) {
-      if (Math.abs(dy) < MOVE_PX || !m.draggable) return;
+      if (dist < MOVE_PX) return;
       this._p.moved = true;
-      clearTimeout(this._p.timer);
+      clearTimeout(this._p.holdTimer);
     }
     e.preventDefault();
     if (this.opts.dragMode === "absolute") {
       this._drag = this._absolute(e);
     } else {
-      const h = (e.currentTarget as HTMLElement).getBoundingClientRect().height || 200;
+      const h = this._el?.getBoundingClientRect().height || 200;
       this._drag = Math.max(0, Math.min(100, this._p.start + (dy / h) * 100 * this.opts.sensitivity));
     }
   };
 
   private _up = (e: PointerEvent): void => {
     const m = this._model;
-    clearTimeout(this._p.timer);
     if (!m || e.pointerId !== this._p.id) return;
+    this._clearTimers();
+    const { moved, armed, held, noTap } = this._p;
     this._p.id = -1;
-    if (this._p.held) return;
-    if (this._drag !== null) {
+    this._p.armed = false;
+    if (held) {
+      this._drag = null;
+      return;
+    }
+    if (armed && moved && this._drag !== null) {
       const v = snapTo(this._drag, m.snap);
       this._drag = null;
       this._send(m, v);
       return;
     }
-    if (this._p.moved) return;
-    // tap
+    this._drag = null;
+    // armed but released without moving (touch held ~0.3-0.8 s): do nothing
+    if (moved || noTap || (this._p.touch && armed) || m.unavailable) return;
     if (m.toggleable) {
       this._haptic("light");
       toggle(this.hass, m);
     } else this._moreInfo();
   };
 
-  private _cancel = (): void => {
-    clearTimeout(this._p.timer);
+  private _cancel = (): void => this._abort();
+
+  private _abort(): void {
+    this._clearTimers();
     this._p.id = -1;
+    this._p.armed = false;
     this._drag = null;
-  };
+  }
 
   private _hold(): void {
     const m = this._model;
-    if (!m || this._p.moved) return;
+    if (!m || this._p.id === -1 || this._p.moved) return;
     this._p.held = true;
+    this._drag = null;
     this._haptic("medium");
-    if (m.domain === "light" && m.supportsTemp) this._menu = true;
+    if (m.domain === "light" && m.supportsTemp && !m.unavailable) this._menu = true;
     else this._moreInfo();
   }
 
@@ -274,8 +362,13 @@ export class SvsSlider extends LitElement {
   };
 
   private _absolute(e: PointerEvent): number {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    return Math.max(0, Math.min(100, ((r.bottom - e.clientY) / r.height) * 100));
+    return this._absoluteAt(e.clientY);
+  }
+
+  private _absoluteAt(y: number): number {
+    const r = this._el?.getBoundingClientRect();
+    if (!r || !r.height) return this._p.start;
+    return Math.max(0, Math.min(100, ((r.bottom - y) / r.height) * 100));
   }
 
   private _send(m: SliderModel, v: number): void {

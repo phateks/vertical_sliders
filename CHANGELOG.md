@@ -2,11 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+- Scrolling on a phone over the card no longer turns lights on or opens more-info.
+  The page can scroll over the sliders again; dimming starts after a short hold
+  (~0.3 s, with a haptic tick), and a touch that only stops a scroll is not a tap.
+  Long press for the menu / more-info is now ~0.8 s. Mouse drag is unchanged.
+
+## [0.1.1] - 2026-11-27
+
 ### Changed
 - Short sliders (under ~140 px tall): bigger icon and name, sized from the real height,
   centred vertically on one row; the drag percentage sits on the right, centred.
 
-## [2.0.0] - 2026-11-27
+## [0.1.0] - 2026-11-27
 
 Rewritten in Lit/TypeScript (same repo layout and release flow as Energy-Flow-card).
 Replaces the `light_vslider` button-card template from the dobro dashboard.

@@ -78,7 +78,9 @@ export const sliderStyles = css`
     container-type: size;
     overflow: hidden;
     cursor: pointer;
-    touch-action: none;
+    /* the page may scroll over the tile; dimming starts only after a short hold */
+    touch-action: pan-y;
+    -webkit-touch-callout: none;
     border-radius: clamp(12px, 11cqmin, var(--svs-radius));
     background: var(--svs-surface);
     border: 1px solid color-mix(in srgb, var(--a) var(--svs-off-border), transparent);
@@ -265,7 +267,7 @@ export const sliderStyles = css`
     overflow: hidden;
     background: color-mix(in srgb, var(--a) 8%, rgba(255, 255, 255, 0.06));
     cursor: ns-resize;
-    touch-action: none;
+    touch-action: pan-y;
   }
   .column.off .fill {
     height: 0 !important;
@@ -293,7 +295,7 @@ export const sliderStyles = css`
     cursor: pointer;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.06);
-    touch-action: none;
+    touch-action: manipulation;
   }
   .column.on .power {
     background: color-mix(in srgb, var(--a) 14%, transparent);
