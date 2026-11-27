@@ -1,6 +1,6 @@
 {
   "name": "simple-vertical-slider",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Vertical slider tiles for Home Assistant: tap to toggle, hold and drag to dim. Lights, light groups, fans, switches, numbers and media players.",
   "type": "module",
   "main": "simple-vertical-slider.js",
