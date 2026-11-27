@@ -1,6 +1,5 @@
 {
   "name": "Simple Vertical Slider",
-  "content_type": "plugin",
   "render_readme": true,
   "filename": "simple-vertical-slider.js"
 }
