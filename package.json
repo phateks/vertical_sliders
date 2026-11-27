@@ -1,6 +1,6 @@
 {
   "name": "simple-vertical-slider",
-  "version": "2.0.0",
+  "version": "0.1.0",
   "description": "Vertical slider tiles for Home Assistant: tap to toggle, hold and drag to dim. Lights, light groups, fans, switches, numbers and media players.",
   "type": "module",
   "main": "simple-vertical-slider.js",
@@ -9,7 +9,15 @@
     "watch": "rollup -c --watch",
     "lint": "echo \"(no lint configured)\""
   },
-  "keywords": ["home-assistant", "homeassistant", "lovelace", "custom-card", "slider", "dimmer", "light"],
+  "keywords": [
+    "home-assistant",
+    "homeassistant",
+    "lovelace",
+    "custom-card",
+    "slider",
+    "dimmer",
+    "light"
+  ],
   "author": "Vlad",
   "license": "MIT",
   "dependencies": {
