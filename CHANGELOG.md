@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Short sliders (under ~140 px tall): bigger icon and name, sized from the real height,
+  centred vertically on one row; the drag percentage sits on the right, centred.
+
 ## [2.0.0] - 2026-11-27
 
 Rewritten in Lit/TypeScript (same repo layout and release flow as Energy-Flow-card).

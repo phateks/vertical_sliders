@@ -175,22 +175,25 @@ export const sliderStyles = css`
   /* short tile: icon and name on one row */
   @container (max-height: 140px) {
     .content {
+      padding: 0 clamp(10px, 18cqh, 22px);
       grid-template-columns: auto minmax(0, 1fr);
-      grid-template-rows: auto 1fr;
-      grid-template-areas: "i n" ". .";
-      column-gap: clamp(6px, 8cqmin, 14px);
+      grid-template-rows: 1fr;
+      grid-template-areas: "i n";
+      column-gap: clamp(8px, 16cqh, 18px);
       align-items: center;
     }
     .tile .icon {
-      --mdc-icon-size: clamp(16px, 34cqh, 40px);
+      --mdc-icon-size: clamp(18px, 50cqh, 52px);
     }
     .tile .name {
-      font-size: clamp(11px, 16cqh, 18px);
+      font-size: clamp(12px, 26cqh, 24px);
     }
     .tile .pct {
-      top: auto;
-      bottom: clamp(6px, 10cqh, 14px);
-      font-size: clamp(12px, 20cqh, 22px);
+      top: 50%;
+      bottom: auto;
+      transform: translateY(-50%);
+      right: clamp(10px, 18cqh, 22px);
+      font-size: clamp(13px, 32cqh, 30px);
     }
   }
   /* very narrow tile: icon only, centred */
